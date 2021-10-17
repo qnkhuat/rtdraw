@@ -1,3 +1,8 @@
+# linting
+.clj-kondo
+.lsp
+
+# lein
 /target
 /classes
 /checkouts
@@ -11,3 +16,4 @@ pom.xml.asc
 /.prepl-port
 .hgignore
 .hg/
+.cpcache

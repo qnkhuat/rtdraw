@@ -2,6 +2,9 @@
 
 FIXME: description
 
+# Commands
+dev `clojure -M:dev`
+
 ## Installation
 
 Download from http://example.com/FIXME.
