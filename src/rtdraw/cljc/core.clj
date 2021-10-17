@@ -9,7 +9,7 @@
 (defroutes routes
   (GET "/foo" [] "Hello Foo")
   (GET "/bar" [] "Hello Bar")
-  (route/not-found "Where are youu going??"))
+  (route/not-found "Where are you going??"))
 
 (defn -main [& args]
   (server/start-web-server! routes {:port 3000}))

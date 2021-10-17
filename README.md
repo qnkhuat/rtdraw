@@ -5,6 +5,12 @@ FIXME: description
 # Commands
 dev `clj -M:dev:cider-clj`
 
+Start server 
+```clojure
+(use 'dev)
+(start!)
+`
+
 ## Installation
 
 Download from http://example.com/FIXME.
