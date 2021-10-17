@@ -3,7 +3,7 @@
 FIXME: description
 
 # Commands
-dev `clojure -M:dev`
+dev `clj -M:dev:cider-clj`
 
 ## Installation
 

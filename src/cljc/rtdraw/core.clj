@@ -1,11 +1,14 @@
 (ns cljc.rtdraw.core
-  (:require [ring.adapter.jetty :refer [run-jetty]])
+  (:require [ring.adapter.jetty :refer [run-jetty]]
+            [compojure.core :refer [defroutes GET]]
+            [compojure.route :as route])
   (:gen-class))
 
-(defn handler [request]
-  {:status 200
-   :headers {"Content-Type" "text/html"}
-   :body "Hello World!!"})
+(defroutes routes
+  (GET "/foo" [] "Hello Foo")
+  (GET "/bar" [] "Hello Bar")
+  (route/not-found "Where are youu going???")
+  )
 
 (defn -main [& args]
-  (run-jetty handler {:port 3000}))
+  (run-jetty routes {:port 3000}))
