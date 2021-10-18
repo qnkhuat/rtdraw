@@ -22,6 +22,7 @@ pom.xml.asc
 # shadow-js
 node_modules/
 public/js
+public/css
 /src/gen
 .shadow-cljs/
 
