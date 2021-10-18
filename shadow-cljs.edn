@@ -3,9 +3,9 @@
  ["src"]
 
  :dependencies
- []
+ [[reagent "1.1.0"]]
 
- :dev-http {8080 "public"}
+ :dev-http {8000 "public"}
  :builds
  {:frontend
   {:target :browser
