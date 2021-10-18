@@ -17,3 +17,11 @@ pom.xml.asc
 .hgignore
 .hg/
 .cpcache
+
+
+# shadow-js
+node_modules/
+public/js
+/src/gen
+.shadow-cljs/
+

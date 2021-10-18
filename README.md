@@ -3,13 +3,18 @@
 FIXME: description
 
 # Commands
+
+## Start server development
 dev `clj -M:dev:cider-clj`
 
 Start server 
 ```clojure
 (use 'dev)
 (start!)
-`
+```
+
+## Start front-end development
+`npm run dev`
 
 ## Installation
 

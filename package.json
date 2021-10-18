@@ -1,0 +1,11 @@
+{
+  "name": "rtdraw",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "shadow-cljs watch frontend"
+  },
+  "devDependencies": {
+    "shadow-cljs": "^2.15.12"
+  }
+}
