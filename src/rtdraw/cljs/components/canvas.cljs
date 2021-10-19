@@ -2,8 +2,6 @@
   (:require [reagent.core :as r]
             [cljs.core.match :refer [match]]
             [cljs.core.async :as a :refer [put! >! <! go go-loop dropping-buffer chan]]
-            [haslett.format :as fmt]
-            [haslett.client :as ws]
             ))
 
 (defn canvas
@@ -58,7 +56,7 @@
 
                          :else
                          (js/console.error "????????????"))
-                  (.send conn (fmt/write fmt/json msg))
+                  (.send conn msg)
                   (recur (<! ch))
                   ))
 
