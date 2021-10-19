@@ -7,17 +7,29 @@
             [compojure.route :as route])
   (:gen-class))
 
-
+(defonce connections (atom #{}))
 
 (defroutes routes
   (route/resources "/")
   (route/not-found "Where are you going?"))
 
-(def ws-handler {:on-connect (fn [_] (println "connect"))
-                 :on-error (fn [_ e] (println "error: " e))
-                 :on-close (fn [_ _ reason] (println "close: " reason))
+(def ws-handler {:on-connect (fn [ws] 
+                               (swap! connections conj ws)
+                               (println "new connection: " (count @connections) " ws: " ws)
+                               )
+                 :on-error (fn [ws e] 
+                             (swap! connections disj ws)
+                             (println "error: " e)
+                             (println "#connections: " (count @connections))
+                             )
+                 :on-close (fn [ws _ reason] 
+                             (println "close: " reason)
+                             (swap! connections disj ws)
+                             (println "#connections: " (count @connections))
+                             )
                  :on-text (fn [ws text-message] 
-                            (send! ws "yo")
+                            ; broadcast this message to everyone except itself
+                            (doall (map #(send! % text-message) (filter #(not= ws %) @connections)))
                             )
                  })
 

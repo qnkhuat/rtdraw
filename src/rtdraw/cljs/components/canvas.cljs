@@ -1,6 +1,7 @@
 (ns rtdraw.cljs.components.canvas
   (:require [reagent.core :as r]
             [cljs.core.match :refer [match]]
+            [clojure.edn :as edn]
             [cljs.core.async :as a :refer [put! >! <! go go-loop dropping-buffer chan]]
             ))
 
@@ -53,11 +54,13 @@
          ; resize
          (set! (.. (.getContext @this "2d") -canvas -width) (.-innerWidth js/window))
          (set! (.. (.getContext @this "2d") -canvas -height) (.-innerHeight js/window))
-         (set! (.-onmessage conn) (fn [msg] (js/console.log "got a message: " msg)))
+
+         (set! (.-onmessage conn) (fn [msg] 
+                                    (handle-msg (->> msg .-data edn/read-string))
+                                    ))
 
          ; loop to draw
          (go-loop [msg (<! ch)]
-                  (js/console.log "got a message")
                   (.send conn msg)
                   (handle-msg msg)
                   (recur (<! ch))
