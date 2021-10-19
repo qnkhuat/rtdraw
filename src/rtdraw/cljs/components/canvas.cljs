@@ -1,25 +1,8 @@
 (ns rtdraw.cljs.components.canvas
   (:require [reagent.core :as r]
-            [reagent.dom :as rd]
-            [goog.events :as events]
             [cljs.core.match :refer [match]]
             [cljs.core.async :as async
              :refer [<! >! put! chan close! go go-loop dropping-buffer]]))
-
-;(defn canvas
-;  []
-;  [:canvas {
-;            :on-click (fn [e]
-;                        (let [el (.getElementById js/document "canvas")
-;                              ctx (.getContext el "2d")]
-;                          (js/console.log "canvas" el)
-;                          (js/console.log "context" ctx)
-;                          ;(set! (.-fillStyle ctx) "red")
-;                          (.fillRect ctx 0 0 100 100)
-;                          )
-;                        )
-;            :id "canvas" :class "w-screen h-screen"}]
-;  )
 
 (defn canvas
   []
@@ -57,15 +40,12 @@
                          (do 
                            (reset! drawing false)
                            (when @this 
-                             (.beginPath (.getContext @this "2d"))
-                             )
-                           )
+                             (.beginPath (.getContext @this "2d"))))
 
                          [{:type :mouse-down, :x x, :y y}]
                          (do 
                            (reset! drawing true)
-                           (>! ch {:type :mouse-move, :x x, :y y})
-                           )
+                           (>! ch {:type :mouse-move, :x x, :y y}))
 
                          :else
                          (js/console.log "what????????????"))
@@ -79,7 +59,6 @@
            :on-mouse-down handle-mouse-down
            :on-mouse-up handle-mouse-up
            :on-mouse-move handle-mouse-move
-           ;:on-click handle-on-click 
            :ref (fn [el] (reset! this el))
            }]
          )}

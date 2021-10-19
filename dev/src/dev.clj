@@ -1,13 +1,13 @@
 (ns dev
   (:require [ring.middleware.reload :refer [wrap-reload]]
-            [rtdraw.cljc.server :as server]
-            [rtdraw.cljc.core :refer [routes]]))
+            [ring.adapter.jetty :refer [run-jetty]]
+            [rtdraw.clj.core :refer [routes]]))
 
 (def dev-handler
   (wrap-reload #'routes))
 
 (defn start! []
-  (server/start-web-server! dev-handler {:port 3000}))
+  (run-jetty dev-handler {:port 3000}))
 
 (comment
   (require 'dev)
