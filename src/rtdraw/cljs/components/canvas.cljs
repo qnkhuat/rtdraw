@@ -19,6 +19,7 @@
         handle-mouse-move 
         (fn [e] (put! ch {:type :mouse-move, :x (.-clientX e), :y (.-clientY e)}))
 
+
         ]
     (r/create-class
       {
@@ -42,7 +43,7 @@
                            (when @this 
                              (.beginPath (.getContext @this "2d"))))
 
-                         [{:type :mouse-down, :x x, :y y}]
+                         [{:type :mouse-dokkkkkkk wn, :x x, :y y}]
                          (do 
                            (reset! drawing true)
                            (>! ch {:type :mouse-move, :x x, :y y}))

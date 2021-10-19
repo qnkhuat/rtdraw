@@ -1,14 +1,25 @@
 (ns dev
   (:require [ring.middleware.reload :refer [wrap-reload]]
-            [ring.adapter.jetty :refer [run-jetty]]
-            [rtdraw.clj.core :refer [routes]]))
+            [ring.adapter.jetty9 :refer [run-jetty]]
+            [rtdraw.clj.core :refer [app websocket-routes]]))
+
+(defonce ^:private instance* (atom nil))
+
+(defn instance []
+  @instance*)
+
 
 (def dev-handler
-  (wrap-reload #'routes))
+  (wrap-reload #'app))
 
 (defn start! []
-  (run-jetty dev-handler {:port 3000}))
+  (reset! instance* (run-jetty dev-handler {:port 3000 :join? false :websockets websocket-routes})))
+
+(defn stop! []
+  (when (instance)
+    (.stop (instance))))
 
 (comment
   (require 'dev)
-  (dev/start!))
+  (dev/start!)
+  (dev/stop!))
