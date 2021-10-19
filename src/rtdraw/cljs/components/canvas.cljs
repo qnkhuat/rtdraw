@@ -1,12 +1,18 @@
 (ns rtdraw.cljs.components.canvas
   (:require [reagent.core :as r]
             [cljs.core.match :refer [match]]
-            [cljs.core.async :as async
-             :refer [<! >! put! chan close! go go-loop dropping-buffer]]))
+            [cljs.core.async :as a :refer [put! >! <! go go-loop dropping-buffer chan]]
+            [haslett.format :as fmt]
+            [haslett.client :as ws]
+            ))
 
 (defn canvas
   []
   (let [ch (chan (dropping-buffer 1024))
+        ;conn (go (<! (ws/connect "ws://localhost:3000/ws/" {:format fmt/json})))
+        conn (js/WebSocket.  "ws://localhost:3000/ws/")
+        _ (println "this is it" conn)
+
         this (atom nil)
         drawing (r/atom false)
 
@@ -19,14 +25,16 @@
         handle-mouse-move 
         (fn [e] (put! ch {:type :mouse-move, :x (.-clientX e), :y (.-clientY e)}))
 
-
         ]
     (r/create-class
       {
        :component-did-mount
        (fn []
+         ; resize
          (set! (.. (.getContext @this "2d") -canvas -width) (.-innerWidth js/window))
          (set! (.. (.getContext @this "2d") -canvas -height) (.-innerHeight js/window))
+
+         ; loop to draw
          (go-loop [msg (<! ch)]
                   (match [msg]
                          [{:type :mouse-move, :x x, :y y}]
@@ -43,13 +51,14 @@
                            (when @this 
                              (.beginPath (.getContext @this "2d"))))
 
-                         [{:type :mouse-dokkkkkkk wn, :x x, :y y}]
+                         [{:type :mouse-down, :x x, :y y}]
                          (do 
                            (reset! drawing true)
                            (>! ch {:type :mouse-move, :x x, :y y}))
 
                          :else
-                         (js/console.log "what????????????"))
+                         (js/console.error "????????????"))
+                  (.send conn (fmt/write fmt/json msg))
                   (recur (<! ch))
                   ))
 

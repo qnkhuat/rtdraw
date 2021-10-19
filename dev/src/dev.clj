@@ -8,7 +8,6 @@
 (defn instance []
   @instance*)
 
-
 (def dev-handler
   (wrap-reload #'app))
 
