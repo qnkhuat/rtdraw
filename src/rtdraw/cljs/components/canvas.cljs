@@ -7,9 +7,7 @@
 (defn canvas
   []
   (let [ch (chan (dropping-buffer 1024))
-        ;conn (go (<! (ws/connect "ws://localhost:3000/ws/" {:format fmt/json})))
         conn (js/WebSocket.  "ws://localhost:3000/ws/")
-        _ (println "this is it" conn)
 
         this (atom nil)
         drawing (r/atom false)
@@ -23,6 +21,30 @@
         handle-mouse-move 
         (fn [e] (put! ch {:type :mouse-move, :x (.-clientX e), :y (.-clientY e)}))
 
+        handle-msg
+        (fn [msg]
+          (match [msg]
+                 [{:type :mouse-move, :x x, :y y}]
+                 (when (and @this @drawing) 
+                   (let [ctx (.getContext @this "2d")]
+                     (.lineTo ctx x y)
+                     (.stroke ctx)
+                     (.beginPath ctx)
+                     (.moveTo ctx x y)))
+
+                 [{:type :mouse-up, :x _, :y _}]
+                 (do 
+                   (reset! drawing false)
+                   (when @this 
+                     (.beginPath (.getContext @this "2d"))))
+
+                 [{:type :mouse-down, :x x, :y y}]
+                 (do 
+                   (reset! drawing true)
+                   (put! ch {:type :mouse-move, :x x, :y y}))
+
+                 :else
+                 (js/console.error "????????????")))
         ]
     (r/create-class
       {
@@ -31,32 +53,13 @@
          ; resize
          (set! (.. (.getContext @this "2d") -canvas -width) (.-innerWidth js/window))
          (set! (.. (.getContext @this "2d") -canvas -height) (.-innerHeight js/window))
+         (set! (.-onmessage conn) (fn [msg] (js/console.log "got a message: " msg)))
 
          ; loop to draw
          (go-loop [msg (<! ch)]
-                  (match [msg]
-                         [{:type :mouse-move, :x x, :y y}]
-                         (when (and @this @drawing) 
-                           (let [ctx (.getContext @this "2d")]
-                             (.lineTo ctx x y)
-                             (.stroke ctx)
-                             (.beginPath ctx)
-                             (.moveTo ctx x y)))
-
-                         [{:type :mouse-up, :x _, :y _}]
-                         (do 
-                           (reset! drawing false)
-                           (when @this 
-                             (.beginPath (.getContext @this "2d"))))
-
-                         [{:type :mouse-down, :x x, :y y}]
-                         (do 
-                           (reset! drawing true)
-                           (>! ch {:type :mouse-move, :x x, :y y}))
-
-                         :else
-                         (js/console.error "????????????"))
+                  (js/console.log "got a message")
                   (.send conn msg)
+                  (handle-msg msg)
                   (recur (<! ch))
                   ))
 

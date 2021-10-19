@@ -12,13 +12,17 @@
   (wrap-reload #'app))
 
 (defn start! []
-  (reset! instance* (run-jetty dev-handler {:port 3000 :join? false :websockets websocket-routes})))
+  (reset! instance* (run-jetty dev-handler 
+                               {:port 3000 :join? false 
+                                :websockets websocket-routes})))
 
 (defn stop! []
   (when (instance)
     (.stop (instance))))
 
 (comment
+  (use '[clojure.tools.namespace.repl :only (refresh)])
+  (refresh)
   (require 'dev)
   (dev/start!)
   (dev/stop!))
