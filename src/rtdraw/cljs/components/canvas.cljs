@@ -14,13 +14,19 @@
         drawing (r/atom false)
 
         handle-mouse-down 
-        (fn [e] (put! ch {:type :mouse-down, :x (.-clientX e), :y (.-clientY e)}))
+        (fn [e] (if ch 
+                  (put! ch {:type :mouse-down, :x (.-clientX e), :y (.-clientY e)})
+                  (js/console.log "Channel is closed")))
 
         handle-mouse-up 
-        (fn [e] (put! ch {:type :mouse-up, :x (.-clientX e), :y (.-clientY e)}))
+        (fn [e] (if ch 
+                  (put! ch {:type :mouse-up, :x (.-clientX e), :y (.-clientY e)})
+                  (js/console.log "Channel is closed")))
 
         handle-mouse-move 
-        (fn [e] (put! ch {:type :mouse-move, :x (.-clientX e), :y (.-clientY e)}))
+        (fn [e] (if ch 
+                  (put! ch {:type :mouse-move, :x (.-clientX e), :y (.-clientY e)})
+                  (js/console.log "Channel is closed")))
 
         handle-msg
         (fn [msg]
@@ -45,15 +51,16 @@
                    (put! ch {:type :mouse-move, :x x, :y y}))
 
                  :else
-                 (js/console.error "????????????")))
+                 (js/console.error "????????????"))
+          )
         ]
     (r/create-class
       {
        :component-did-mount
        (fn []
          ; resize
-         (set! (.. (.getContext @this "2d") -canvas -width) (.-innerWidth js/window))
-         (set! (.. (.getContext @this "2d") -canvas -height) (.-innerHeight js/window))
+         (set! (.. @this -width) (.-innerWidth js/window))
+         (set! (.. @this -height) (.-innerHeight js/window))
 
          (set! (.-onmessage conn) (fn [msg] 
                                     (handle-msg (->> msg .-data edn/read-string))
@@ -61,15 +68,19 @@
 
          ; loop to draw
          (go-loop [msg (<! ch)]
-                  (.send conn msg)
-                  (handle-msg msg)
-                  (recur (<! ch))
+                  (if (= 1 (.-readyState conn))
+                    (do
+                     (.send conn msg)
+                     (handle-msg msg)
+                     (recur (<! ch)))
+                    (recur msg)
+                    )
                   ))
 
        :reagent-render 
        (fn [] 
          [:canvas
-          {:class "w-screen h-screen"
+          {:class ""
            :on-mouse-down handle-mouse-down
            :on-mouse-up handle-mouse-up
            :on-mouse-move handle-mouse-move

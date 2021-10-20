@@ -21,8 +21,9 @@
     (.stop (instance))))
 
 (comment
-  (use '[clojure.tools.namespace.repl :only (refresh)])
-  (refresh)
   (require 'dev)
   (dev/start!)
-  (dev/stop!))
+  (dev/stop!)
+  (use '[clojure.tools.namespace.repl :only (refresh)])
+  (refresh)
+  )
