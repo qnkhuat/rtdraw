@@ -71,8 +71,8 @@
        :component-did-mount
        (fn []
          ; resize
-         (set! (.. @this -width) (.-innerWidth js/window))
-         (set! (.. @this -height) (.-innerHeight js/window))
+         (set! (.. @this -width) (.-offsetWidth @this))
+         (set! (.. @this -height) (.-offsetHeight @this))
 
          (set! (.-onmessage conn) (fn [msg] 
                                     (handle-msg (->> msg .-data edn/read-string))
@@ -81,11 +81,9 @@
          ; loop to draw
          (go-loop [msg (<! ch)]
                   (when (= 1 (.-readyState conn))
-                    (do
-                      (.send conn msg)
-                      (handle-msg msg)
-                      )
-                    (recur (<! ch)))
+                    (.send conn msg)
+                    (handle-msg msg))
+                  (recur (<! ch))
                   ))
 
        :reagent-render 
@@ -93,7 +91,7 @@
          [:div
           [Button "click me bitch"]
           [:canvas
-           {:class "mt-24 ml-24 border-2 border-black"
+           {:class "mt-24 ml-24 border-2 border-black w-screen h-screen"
             :on-mouse-down handle-mouse-down
             :on-mouse-up handle-mouse-up
             :on-mouse-move handle-mouse-move
