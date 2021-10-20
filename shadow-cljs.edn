@@ -13,4 +13,6 @@
  {:frontend
   {:target :browser
    :modules {:main {:init-fn rtdraw.cljs.main/init}}
+   :compiler-options {:infer-externs :auto
+                      :output-feature-set :es5}
    }}}
