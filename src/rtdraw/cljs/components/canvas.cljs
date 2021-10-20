@@ -15,6 +15,7 @@
 
 
 (defn get-ctx
+  "Get context from canvas ref"
   [ref]
   (when @ref
     (.getContext @ref "2d")))
@@ -33,11 +34,12 @@
                        :stroke-size 5
                        :drawing false ; keeping track of whether or not is drawing mode
                        })
+
         this (atom nil) 
 
         handle-mouse-down 
         (fn [e] 
-          (put! ch (merge {:type :mouse-down} (get-mouse-pos e @this) @state)))
+          (put! ch (merge {:type :mouse-down} (get-mouse-pos e @this) @state )))
 
         handle-mouse-up 
         (fn [e]  
@@ -47,36 +49,6 @@
         (fn [e] 
           (put! ch (merge {:type :mouse-move} (get-mouse-pos e @this) @state)))
 
-        handle-draw
-        (fn [msg]
-          (match [msg]
-                 [{:type :mouse-move, :x x, :y y, }]
-                 (when (and @this (is-drawing state)) 
-                   (let [ctx (.getContext @this "2d")]
-                     (set! (.. ctx -lineWidth) (:stroke-size msg))
-                     (set! (.. ctx -strokeStyle) (:color msg))
-                     (.lineTo ctx x y)
-                     (.stroke ctx)
-                     (.beginPath ctx)
-                     (.moveTo ctx x y)
-                     (.closePath ctx)
-                     ))
-
-                 [{:type :mouse-up, :x _, :y _}]
-                 (do 
-                   (swap! state assoc :drawing false)
-                   (when @this 
-                     (.beginPath (.getContext @this "2d"))))
-
-                 [{:type :mouse-down, :x x, :y y}]
-                 (do 
-                   (swap! state assoc :drawing true)
-                   (put! ch {:type :mouse-move, :x x, :y y}))
-
-                 :else
-                 (js/console.error "????????????"))
-
-          )
         handle-change-pen
         (fn [e]
           (swap! state assoc :pen-type (keyword (.. e -target -value))))
@@ -90,12 +62,55 @@
         (fn [e]
           (swap! state assoc :color (.. e -target -value)))
 
+        handle-clear
+        (fn [e]
+          (put! ch {:type :action-clear}))
+
+
+        handle-draw
+        (fn [msg]
+          (match [msg]
+                 [{:type :mouse-move, :x x, :y y, }]
+                 (when (and @this (is-drawing state)) 
+                   (let [ctx (get-ctx this)]
+                     (set! (.. ctx -lineWidth) (:stroke-size msg))
+                     (set! (.. ctx -strokeStyle) (:color msg))
+                     (set! (.. ctx -lineJoin) "round")
+                     (set! (.. ctx -lineCap) "round")
+                     (.lineTo ctx x y)
+                     (.stroke ctx)
+                     (.moveTo ctx x y)
+                     ))
+
+                 [{:type :mouse-up, :x _, :y _}]
+                 (do 
+                   (swap! state assoc :drawing false)
+                   (when @this 
+                     (.beginPath (.getContext @this "2d"))))
+
+                 [{:type :mouse-down, :x x, :y y}]
+                 (do 
+                   (swap! state assoc :drawing true)
+                   (put! ch {:type :mouse-move, :x x, :y y}))
+
+
+                 [{:type :action-clear}]
+                 (let [ctx (get-ctx this)]
+                   (.clearRect ctx 0 0 (.-width ctx) (.-height ctx)))
+
+                 :else
+                 (js/console.error "????????????"))
+
+          )
         ]
     (r/create-class
       {
        :component-did-mount
        (fn []
          ; resize
+         ; TODO : recheck this logic. do we need to set all this?
+         (set! (.. (get-ctx this) -width) (.-offsetWidth @this))
+         (set! (.. (get-ctx this) -height) (.-offsetHeight @this))
          (set! (.. @this -width) (.-offsetWidth @this))
          (set! (.. @this -height) (.-offsetHeight @this))
 
@@ -114,6 +129,7 @@
        :reagent-render 
        (fn [] 
          [:div {:class "mt-24 mx-12"}
+          [Button {:onClick handle-clear } "Clear"]
           [FormControl
            [InputLabel {:id "select-pen"} "Pen"]
            [Select {:labelId "select-pen"
