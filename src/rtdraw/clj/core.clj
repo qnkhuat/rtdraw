@@ -1,6 +1,6 @@
 (ns rtdraw.clj.core
   (:require [ring.adapter.jetty9 :refer [run-jetty send!]]
-            [compojure.core :refer [defroutes GET POST]]
+            [compojure.core :refer [defroutes]]
             [ring.middleware.keyword-params :refer [wrap-keyword-params]]
             [ring.middleware.params :refer [wrap-params]]
             [ring.middleware.session :refer [wrap-session]]
@@ -16,10 +16,10 @@
 (def ws-handler {:on-connect (fn [ws] 
                                (swap! connections conj ws)
                                )
-                 :on-error (fn [ws e] 
+                 :on-error (fn [ws _e] 
                              (swap! connections disj ws)
                              )
-                 :on-close (fn [ws _ reason] 
+                 :on-close (fn [ws _status-code _reason] 
                              (swap! connections disj ws)
                              )
                  :on-text (fn [ws text-message] 
@@ -37,5 +37,5 @@
       wrap-session
       ))
 
-(defn -main [& args]
+(defn -main [& _args]
   (run-jetty app {:port 3000 :websockets websocket-routes}))

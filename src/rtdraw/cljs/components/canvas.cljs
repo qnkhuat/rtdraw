@@ -37,24 +37,24 @@
 
         handle-mouse-down 
         (fn [e] 
-          (put! ch (merge {:type :mouse-down} (get-mouse-pos e @this))))
+          (put! ch (merge {:type :mouse-down} (get-mouse-pos e @this) @state)))
 
         handle-mouse-up 
         (fn [e]  
-          (put! ch (merge {:type :mouse-up} (get-mouse-pos e @this))))
+          (put! ch (merge {:type :mouse-up} (get-mouse-pos e @this) @state)))
 
         handle-mouse-move 
         (fn [e] 
-          (put! ch (merge {:type :mouse-move} (get-mouse-pos e @this))))
+          (put! ch (merge {:type :mouse-move} (get-mouse-pos e @this) @state)))
 
         handle-draw
         (fn [msg]
           (match [msg]
-                 [{:type :mouse-move, :x x, :y y}]
+                 [{:type :mouse-move, :x x, :y y, }]
                  (when (and @this (is-drawing state)) 
                    (let [ctx (.getContext @this "2d")]
-                     (set! (.. ctx -lineWidth) (:stroke-size @state))
-                     (set! (.. ctx -strokeStyle) (:color @state))
+                     (set! (.. ctx -lineWidth) (:stroke-size msg))
+                     (set! (.. ctx -strokeStyle) (:color msg))
                      (.lineTo ctx x y)
                      (.stroke ctx)
                      (.beginPath ctx)
