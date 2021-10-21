@@ -10,6 +10,35 @@
 (defn s-uuid []
   (str (random-uuid)))
 
+(defn get-abs-left
+  "Return the absolute left of an object whether it's alone or it's in a group"
+  [o]
+  (if (.-group o)
+    (+ (.-left o) (.. o -group -left) (/ (.. o -group -width ) 2))
+    (.-left o)))
+
+(defn get-abs-top
+  "Return the absolute left of an object whether it's alone or it's in a group"
+  [o]
+  (if (.-group o)
+    (+ (.-top o) (.. o -group -top) (/ (.. o -group -height ) 2)) 
+    (.-top o)))
+
+(defn get-abs-scaleX
+  "Return the absolute scale of an object whether it's alone or it's in a group"
+  [o]
+  (if (.-group o)
+    (* (.-scaleX o) (.. o -group -scaleX))
+    (.-scaleX o)))
+
+
+(defn get-abs-scaleY
+  "Return the absolute scale of an object whether it's alone or it's in a group"
+  [o]
+  (if (.-group o)
+    (* (.-scaleY o) (.. o -group -scaleY))
+    (.-scaleY o)))
+
 (defn get-mouse-pos
   "Get position to draw using event and the element"
   [e el]
@@ -61,7 +90,7 @@
                                      :width 50
                                      :height 50
                                      :stroke (:color @state)
-                                     :stroke-size (:stroke-size @state)
+                                     ;:stroke-size (:stroke-size @state)
                                      :id (s-uuid)
                                      :radius 25
                                      }
@@ -71,31 +100,33 @@
               (put! ch msg)
               )))
 
-        handle-object-moving
-        (fn [e]
-          (js/console.log "object: moving:" (clj->js e)))
-
+        
         handle-object-modified
         (fn [e]
           (js/console.log "object: modified: " (clj->js e)))
 
         handle-object-modify
-        (fn [e]
-          (let [active-object (.getActiveObject @canvas)]
-            ; this call back doesn't need to draw bc it's already drawed
-            ; so send directly to the remote
-            (.send conn {:type :action-object-modify, :payload {:id (.-id (.getActiveObject @canvas)), 
-                                                                :options {
-                                                                          :left (.-left active-object)
-                                                                          :top (.-top active-object)
-                                                                          :width (.-width active-object)
-                                                                          :height (.-height active-object)
-                                                                          :zoomX (.-zoomX active-object)
-                                                                          :zoomY (.-zoomY active-object)
-                                                                          :scaleX (.-scaleX active-object)
-                                                                          :scaleY (.-scaleY active-object)
-                                                                          }}}))
-          )
+        (fn [_e]
+          (let [active-objects (.getActiveObjects @canvas)]
+            (doall (for [object active-objects]
+                     ; this call back doesn't need to draw bc it's already drawed
+                     ; so send directly to the remote
+                     ;(let [real-object (first (filter #(= id (.-id object)) (.getObjects @canvas)))]
+                     (do 
+                     (js/console.log "objects ne: " (.getObjects @canvas))
+                     (.send conn {:type :action-object-modify, 
+                                  :payload {:id (.-id object), 
+                                            :options {
+                                                      ; TODO: group scaling is still not working right, the top, left of object also need to be scaled
+                                                      :left (get-abs-left object)
+                                                      :top (get-abs-top object)
+                                                      :scaleX (get-abs-scaleX object)
+                                                      :scaleY (get-abs-scaleY object)
+                                                      :width (.-width object)
+                                                      :angle (.-angle object)
+                                                      :height (.-height object)
+                                                      }}}))))
+            ))
 
         handle-change-pen
         (fn [e]
@@ -179,9 +210,16 @@
             ))
 
         handle-selection-created
-        (fn [_e]
-          (let [active-object (.item @canvas 0)]
-            (swap! state assoc :selecting true)))
+        (fn [e]
+            (set! (.-target e) "hasRotatingPoint" false)
+            (js/console.log (clj->js (.-target e)))
+            (swap! state assoc :selecting true))
+
+        handle-selection-updated
+        (fn [e]
+            (set! (.-target e) "hasRotatingPoint" false)
+            (js/console.log (clj->js (.-target e)))
+            (swap! state assoc :selecting true))
 
         handle-selection-cleared
         (fn [_e]
@@ -209,10 +247,11 @@
               (.on @canvas "object:created" #(js/console.log "object:created: " (clj->js %)))
               (.on @canvas "object:moving" handle-object-modify)
               (.on @canvas "object:scaling" handle-object-modify)
-              (.on @canvas "object:rotating" handle-object-modify)
+              (.on @canvas "object:rotating" handle-object-modify) ; TODO :figure out how rotate group?
               (.on @canvas "object:skewing" handle-object-modify)
               (.on @canvas "object:modified" handle-object-modified)
-              (.on @canvas "selection:created" #(js/console.log "selection:created: " (clj->js %)))
+              (.on @canvas "selection:created" handle-selection-created)
+              (.on @canvas "selection:updated" handle-selection-updated)
 
               (set! (.-onmessage conn) (fn [msg] 
                                           (js/console.log "received a message: " msg)
