@@ -7,6 +7,9 @@
             ["fabric" :as fabric]
             ))
 
+(defn uuid []
+  (str (random-uuid)))
+
 (defn get-mouse-pos
   "Get position to draw using event and the element"
   [e el]
@@ -134,6 +137,7 @@
               ; update the copied object, or else the next paste will replace the last one
               (.clone cloned-object #(swap! state assoc :copied-object %))
               ; create new object under the cursor
+              (.set cloned-object "id" (uuid))
               (.set cloned-object "left" (-> @state :current-mouse-pointer :x))
               (.set cloned-object "top" (-> @state :current-mouse-pointer :y))
               (put! ch {:type :action-object-with-object :payload {:object (clj->js cloned-object)}})
