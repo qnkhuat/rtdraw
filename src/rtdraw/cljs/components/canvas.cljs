@@ -7,7 +7,7 @@
             ["fabric" :as fabric]
             ))
 
-(defn uuid []
+(defn s-uuid []
   (str (random-uuid)))
 
 (defn get-mouse-pos
@@ -62,6 +62,7 @@
                                      :height 50
                                      :stroke (:color @state)
                                      :stroke-size (:stroke-size @state)
+                                     :id (s-uuid)
                                      :radius 25
                                      }
                            }
@@ -76,8 +77,25 @@
 
         handle-object-modified
         (fn [e]
-          (println "object: modified " e)
           (js/console.log "object: modified: " (clj->js e)))
+
+        handle-object-modify
+        (fn [e]
+          (let [active-object (.getActiveObject @canvas)]
+            ; this call back doesn't need to draw bc it's already drawed
+            ; so send directly to the remote
+            (.send conn {:type :action-object-modify, :payload {:id (.-id (.getActiveObject @canvas)), 
+                                                                :options {
+                                                                          :left (.-left active-object)
+                                                                          :top (.-top active-object)
+                                                                          :width (.-width active-object)
+                                                                          :height (.-height active-object)
+                                                                          :zoomX (.-zoomX active-object)
+                                                                          :zoomY (.-zoomY active-object)
+                                                                          :scaleX (.-scaleX active-object)
+                                                                          :scaleY (.-scaleY active-object)
+                                                                          }}}))
+          )
 
         handle-change-pen
         (fn [e]
@@ -92,7 +110,7 @@
           (swap! state assoc :color (.. e -target -value)))
 
         handle-clear
-        (fn [e]
+        (fn [_e]
           (put! ch {:type :action-clear}))
 
         handle-draw
@@ -107,7 +125,8 @@
                                        :rectangle (fabric/fabric.Rect. (clj->js options))
                                        :circle (fabric/fabric.Circle. (clj->js options))
                                        nil)]
-                     (.add @canvas object)))
+                     (.add @canvas object)
+                     ))
 
                  ; TODO: this will not work for remote drawer
                  {:type :action-object-with-object, :payload {:object object}}
@@ -116,6 +135,16 @@
                  {:type :action-object-remove :payload {:id id}}
                  (doall (map #(.remove @canvas %) 
                              (filter #(= id (.-id %)) (.getObjects @canvas))))
+
+                 {:type :action-object-modify :payload {:id id, :options options}}
+                 (do
+                   ;(doall (map #(.set % (clj->js new-options)) (filter #(= id (.-id %)) (.getObjects @canvas)))))
+                   ;(.set (.getActiveObject @canvas) (clj->js {:angle 45})))
+                   (doall (map #(.set % (clj->js options)) 
+                               (filter #(= id (.-id %)) (.getObjects @canvas))))
+                   (.renderAll @canvas)
+                   )
+                 ;(doall (map #(fabric/fabric.util.qrDecompose mt)))
 
                  {:type :action-clear}
                  (.clear @canvas)
@@ -137,7 +166,7 @@
               ; update the copied object, or else the next paste will replace the last one
               (.clone cloned-object #(swap! state assoc :copied-object %))
               ; create new object under the cursor
-              (.set cloned-object "id" (uuid))
+              (.set cloned-object "id" (s-uuid))
               (.set cloned-object "left" (-> @state :current-mouse-pointer :x))
               (.set cloned-object "top" (-> @state :current-mouse-pointer :y))
               (put! ch {:type :action-object-with-object :payload {:object (clj->js cloned-object)}})
@@ -152,8 +181,6 @@
         handle-selection-created
         (fn [_e]
           (let [active-object (.item @canvas 0)]
-            (js/console.log "active object: " (clj->js active-object))
-            (println "selection:created")
             (swap! state assoc :selecting true)))
 
         handle-selection-cleared
@@ -163,7 +190,7 @@
 
         testing-handler
         (fn [e]
-          (js/console.log "uuid: "))
+          (js/console.log "s-uuid: "))
 
         ]
         (r/create-class
@@ -179,10 +206,13 @@
               (.on @canvas "mouse:up" handle-mouse-up)
               (.on @canvas "mouse:down" handle-mouse-down)
               (.on @canvas "mouse:move" handle-mouse-move)
-              (.on @canvas "object:created" #(println "object:created: " %))
-              (.on @canvas "object:moving" handle-object-moving)
+              (.on @canvas "object:created" #(js/console.log "object:created: " (clj->js %)))
+              (.on @canvas "object:moving" handle-object-modify)
+              (.on @canvas "object:scaling" handle-object-modify)
+              (.on @canvas "object:rotating" handle-object-modify)
+              (.on @canvas "object:skewing" handle-object-modify)
               (.on @canvas "object:modified" handle-object-modified)
-              (.on @canvas "selection:created" #(println "selection:created: " %))
+              (.on @canvas "selection:created" #(js/console.log "selection:created: " (clj->js %)))
 
               (set! (.-onmessage conn) (fn [msg] 
                                           (js/console.log "received a message: " msg)
