@@ -4,6 +4,7 @@
             [cljs.core.match :refer [match]]
             [clojure.edn :as edn]
             [cljs.core.async :as a :refer [put! >! <! go go-loop dropping-buffer chan]]
+            ["fabric" :as fabric]
             ))
 
 (defn get-mouse-pos
@@ -13,50 +14,75 @@
     {:x (- (.-clientX e) (.-left rect))
      :y (- (.-clientY e) (.-top rect))}))
 
+(defn get-mouse-pointer
+  [e]
+  (let [pointer (get (js->clj e) "pointer")]
+    {:x (get pointer "x")
+     :y (get pointer "y")}))
 
-(defn get-ctx
-  "Get context from canvas ref"
-  [ref]
-  (when @ref
-    (.getContext @ref "2d")))
-
-(defn is-drawing
-  [state]
-  (:drawing @state))
-
-(defn canvas
+(defn Canvas
   []
   (let [ch (chan (dropping-buffer 1024))
         conn (js/WebSocket.  "ws://localhost:3000/ws/")
 
-        state (r/atom {:pen-type :pen
+        state (r/atom {
                        :color "black"
                        :stroke-size 5
-                       :drawing false ; keeping track of whether or not is drawing mode
+                       :mode :rectangle
+                       :down-pointer {:x nil, :y nil}
+                       :copied-object nil ; store object to duplicate
+                       :current-mouse-pointer nil
                        })
 
-        this (atom nil) 
+        this (atom nil) ; store canvas ref
 
-        handle-mouse-down 
+        canvas (atom nil) ; fabric canvas instance
+
+        handle-mouse-up
+        (fn [_e]
+          (swap! state assoc :mode :selecting))
+
+
+        handle-mouse-move
+        (fn [e]
+          (swap! state assoc :current-mouse-pointer (get-mouse-pointer e)))
+
+        handle-mouse-down
         (fn [e] 
-          (put! ch (merge {:type :mouse-down} (get-mouse-pos e @this) @state )))
+          (when (not= (:mode @state) :selecting)
+            (let [pointer (get (js->clj e) "pointer")
+                  payload {:mode (:mode @state)
+                           :options {
+                                     :left (get pointer "x")
+                                     :top (get pointer "y")
+                                     :width 50
+                                     :height 50
+                                     :stroke (:color @state)
+                                     :stroke-size (:stroke-size @state)
+                                     :radius 25
+                                     }
+                           }
+                  msg (merge {:type :action-object-add :payload payload})]
+              (swap! state assoc :last-created-payload payload)
+              (put! ch msg)
+              )))
 
-        handle-mouse-up 
-        (fn [e]  
-          (put! ch (merge {:type :mouse-up} (get-mouse-pos e @this) @state)))
+        handle-object-moving
+        (fn [e]
+          (js/console.log "object: moving:" (clj->js e)))
 
-        handle-mouse-move 
-        (fn [e] 
-          (put! ch (merge {:type :mouse-move} (get-mouse-pos e @this) @state)))
+        handle-object-modified
+        (fn [e]
+          (println "object: modified " e)
+          (js/console.log "object: modified: " (clj->js e)))
 
         handle-change-pen
         (fn [e]
-          (swap! state assoc :pen-type (keyword (.. e -target -value))))
+          (swap! state assoc :mode (keyword (.. e -target -value))))
 
         handle-change-stroke-size
         (fn [e]
-          (swap! state assoc :stroke-size (.. e -target -value))
-          )
+          (swap! state assoc :stroke-size (.. e -target -value)))
 
         handle-change-color
         (fn [e]
@@ -66,106 +92,146 @@
         (fn [e]
           (put! ch {:type :action-clear}))
 
-
         handle-draw
         (fn [msg]
-          (match [msg]
-                 [{:type :mouse-move, :x x, :y y, }]
-                 (when (and @this (is-drawing state)) 
-                   (let [ctx (get-ctx this)]
-                     (set! (.. ctx -lineWidth) (:stroke-size msg))
-                     (set! (.. ctx -strokeStyle) (:color msg))
-                     (set! (.. ctx -lineJoin) "round")
-                     (set! (.. ctx -lineCap) "round")
-                     (.lineTo ctx x y)
-                     (.stroke ctx)
-                     (.moveTo ctx x y)
-                     ))
+          ; This shouldn't access state
+          (println "draw msg: " msg)
+          (println "state: " @state)
+          (match msg
+                 {:type :action-object-add, :payload {:mode mode, :options options}}
+                 (when @canvas
+                   (when-let [object (case mode
+                                       :rectangle (fabric/fabric.Rect. (clj->js options))
+                                       :circle (fabric/fabric.Circle. (clj->js options))
+                                       nil)]
+                     (.add @canvas object)))
 
-                 [{:type :mouse-up, :x _, :y _}]
-                 (do 
-                   (swap! state assoc :drawing false)
-                   (when @this 
-                     (.beginPath (.getContext @this "2d"))))
+                 ; TODO: this will not work for remote drawer
+                 {:type :action-object-with-object, :payload {:object object}}
+                 (.add @canvas (js->clj object))
 
-                 [{:type :mouse-down, :x x, :y y}]
-                 (do 
-                   (swap! state assoc :drawing true)
-                   (put! ch {:type :mouse-move, :x x, :y y}))
+                 {:type :action-object-remove :payload {:id id}}
+                 (doall (map #(.remove @canvas %) 
+                             (filter #(= id (.-id %)) (.getObjects @canvas))))
 
-
-                 [{:type :action-clear}]
-                 (let [ctx (get-ctx this)]
-                   (.clearRect ctx 0 0 (.-width ctx) (.-height ctx)))
+                 {:type :action-clear}
+                 (.clear @canvas)
 
                  :else
-                 (js/console.error "????????????"))
+                 (js/console.error "Unrecognized msg: " (clj->js msg))))
 
-          )
+        handle-key-down
+        (fn [e]
+          (cond
+            ; Ctrl/Cmd C
+            (and (= (.-keyCode e) 67 ) (or (.-ctrlKey e) (.-metaKey e)))
+            (when-let [active-object (.getActiveObject @canvas)]
+              (.clone active-object #(swap! state assoc :copied-object %)))
+
+            ; Ctrl/Cmd V
+            (and (= (.-keyCode e) 86 ) (or (.-ctrlKey e) (.-metaKey e)))
+            (when-let [cloned-object (:copied-object @state)]
+              ; update the copied object, or else the next paste will replace the last one
+              (.clone cloned-object #(swap! state assoc :copied-object %))
+              ; create new object under the cursor
+              (.set cloned-object "left" (-> @state :current-mouse-pointer :x))
+              (.set cloned-object "top" (-> @state :current-mouse-pointer :y))
+              (put! ch {:type :action-object-with-object :payload {:object (clj->js cloned-object)}})
+              )
+
+            ; Delete
+            (= (.-keyCode e) 8)
+            (doall (map #(put! ch {:type :action-object-remove :payload {:id (.-id %)}}) 
+                        (.getActiveObjects @canvas)))
+            ))
+
+        handle-selection-created
+        (fn [_e]
+          (let [active-object (.item @canvas 0)]
+            (js/console.log "active object: " (clj->js active-object))
+            (println "selection:created")
+            (swap! state assoc :selecting true)))
+
+        handle-selection-cleared
+        (fn [_e]
+          (println "selection:created")
+          (swap! state assoc :selecting false))
+
+        testing-handler
+        (fn [e]
+          (js/console.log "uuid: "))
+
         ]
-    (r/create-class
-      {
-       :component-did-mount
-       (fn []
-         ; resize
-         ; TODO : recheck this logic. do we need to set all this?
-         (set! (.. (get-ctx this) -width) (.-offsetWidth @this))
-         (set! (.. (get-ctx this) -height) (.-offsetHeight @this))
-         (set! (.. @this -width) (.-offsetWidth @this))
-         (set! (.. @this -height) (.-offsetHeight @this))
+        (r/create-class
+          {
+          :component-did-mount
+          (fn []
+            (let [width (.-offsetWidth @this)
+                  height (.-offsetHeight @this)]
+              (reset! canvas (fabric/fabric.Canvas. "canvas" (clj->js {:width width :height height})))
+              (set! (.-isDrawingMode @canvas) false)
+              (.addEventListener js/document "keydown" handle-key-down)
 
-         (set! (.-onmessage conn) (fn [msg] 
-                                    (handle-draw (->> msg .-data edn/read-string))
-                                    ))
+              (.on @canvas "mouse:up" handle-mouse-up)
+              (.on @canvas "mouse:down" handle-mouse-down)
+              (.on @canvas "mouse:move" handle-mouse-move)
+              (.on @canvas "object:created" #(println "object:created: " %))
+              (.on @canvas "object:moving" handle-object-moving)
+              (.on @canvas "object:modified" handle-object-modified)
+              (.on @canvas "selection:created" #(println "selection:created: " %))
 
-         ; loop to draw
-         (go-loop [msg (<! ch)]
-                  (handle-draw msg)
-                  (when (= 1 (.-readyState conn))
-                    (.send conn msg))
-                  (recur (<! ch))
-                  ))
+              (set! (.-onmessage conn) (fn [msg] 
+                                          (js/console.log "received a message: " msg)
+                                          (handle-draw (->> msg .-data edn/read-string))
+                                          ))
 
-       :reagent-render 
-       (fn [] 
-         [:div {:class "mt-24 mx-12"}
-          [Button {:onClick handle-clear } "Clear"]
-          [FormControl
-           [InputLabel {:id "select-pen"} "Pen"]
-           [Select {:labelId "select-pen"
-                    :id "select"
-                    :value (:pen-type @state)
-                    :onChange handle-change-pen
-                    }
-            [MenuItem {:value :rectangle} "Rect"]
-            [MenuItem {:value :circle} "Circle"]
-            [MenuItem {:value :pen} "Pen"]
-            ]
-           ]
+              ; loop to draw
+              (go-loop [msg (<! ch)]
+                        (handle-draw msg)
+                        (when (= 1 (.-readyState conn))
+                          (.send conn msg))
+                        (recur (<! ch)))))
 
-          [FormControl
-           [InputLabel {:id "select-color"} "color"]
-           [Select {:labelId "select-color"
-                    :id "select"
-                    :value (:color @state)
-                    :onChange handle-change-color
-                    }
-            [MenuItem {:value "black"} "Black"]
-            [MenuItem {:value "red"} "Red"]
-            [MenuItem {:value "blue"} "Blue"]
-            ]
-           ]
-          [Slider {:aria-label "Stroke size" 
-                   :min 1
-                   :max 20
-                   :value (:stroke-size @state)
-                   :onChange handle-change-stroke-size}]
-          [:canvas
-           {:class "mt-24 ml-24 border-2 border-black w-screen h-screen"
-            :on-mouse-down handle-mouse-down
-            :on-mouse-up handle-mouse-up
-            :on-mouse-move handle-mouse-move
-            :ref (fn [el] (reset! this el))
-            }]]
-         )}
-      )))
+          :reagent-render 
+          (fn [] 
+            [:div {:class "mt-24 mx-12"}
+              [Button {:onClick handle-clear} "Clear"]
+              [Button {:onClick testing-handler} "Test"]
+              [FormControl
+              [InputLabel {:id "select-pen"} "Pen"]
+              [Select {:labelId "select-pen"
+                        :id "select"
+                        :value (:mode @state)
+                        :onChange handle-change-pen
+                        }
+                [MenuItem {:value :selecting} "Selecting"]
+                [MenuItem {:value :rectangle} "Rect"]
+                [MenuItem {:value :circle} "Circle"]
+                [MenuItem {:value :pen} "Pen"]
+                ]
+              ]
+
+              [FormControl
+              [InputLabel {:id "select-color"} "color"]
+              [Select {:labelId "select-color"
+                        :id "select"
+                        :value (:color @state)
+                        :onChange handle-change-color
+                        }
+                [MenuItem {:value "black"} "Black"]
+                [MenuItem {:value "red"} "Red"]
+                [MenuItem {:value "blue"} "Blue"]
+                ]
+              ]
+              [Slider {:aria-label "Stroke size" 
+                      :min 1
+                      :max 20
+                      :value (:stroke-size @state)
+                      :onChange handle-change-stroke-size}]
+              [:canvas
+              {:class "mt-24 ml-24 border-2 border-black w-screen h-screen"
+                :id "canvas"
+                :ref (fn [el] (reset! this el))
+                }]]
+            )}
+          )))

@@ -3,6 +3,8 @@
             [ring.adapter.jetty9 :refer [run-jetty]]
             [rtdraw.clj.core :refer [app websocket-routes]]))
 
+(println "Welcome to rtdraw dev")
+
 (defonce ^:private instance* (atom nil))
 
 (defn instance []
