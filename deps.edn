@@ -1,4 +1,5 @@
 {:paths ["src"]
+
  :deps
  {org.clojure/clojure {:mvn/version "1.10.1"}
   ring/ring-core {:mvn/version "1.9.4"}
@@ -6,13 +7,17 @@
   org.eclipse.jetty/jetty-alpn-java-server{:mvn/version "9.4.42.v20210604"}
   info.sunng/ring-jetty9-adapter {:mvn/version "0.15.2"}
   compojure/compojure {:mvn/version "1.6.2"}}
+
  :aliases
- {
-  :dev
+ {:dev
   {:extra-paths ["dev/src"]
    :extra-deps {ring/ring-devel {:mvn/version "1.9.4"}}}
-  
+
   :run
   {:main-opts ["-m" "rtdraw.clj.core"]}
+
+  :build
+  {:deps {io.github.clojure/tools.build {:git/tag "v0.6.2" :git/sha "226fb52"}
+          :ns-default build}}
   }
  }
