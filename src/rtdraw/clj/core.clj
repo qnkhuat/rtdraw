@@ -35,4 +35,8 @@
       wrap-session))
 
 (defn -main [& _args]
-  (run-jetty app {:port 3000 :websockets websocket-routes}))
+  (let [port (or (Integer/parseInt (System/getenv "RTDRAW_PORT")) 3000)]
+    (printf "Serving at ::%d\n" port)
+    (flush)
+    (run-jetty app {:port port
+                    :websockets websocket-routes})))
