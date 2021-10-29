@@ -3,8 +3,7 @@
             [rtdraw.cljs.components.canvas :refer [Canvas]]))
 
 (defn Application []
-  [:div [Canvas]]
-  )
+  [:div [Canvas]])
 
 (defn init []
   (rd/render 

@@ -6,6 +6,7 @@
  [[reagent "1.1.0"]
   [org.clojure/core.match "1.0.0"]
   [org.clojure/core.async "1.3.618"]
+  [lambdaisland/uri "1.11.86"]
   ]
 
  :dev-http {8000 "public"}
@@ -13,6 +14,7 @@
  {:frontend
   {:target :browser
    :modules {:main {:init-fn rtdraw.cljs.main/init}}
+   :closure-defines {rtdraw.cljs.env/API_URL #shadow/env ["API_URL" :default "localhost:3000"]}
    :compiler-options {:infer-externs :auto
                       :output-feature-set :es5}
    }}}

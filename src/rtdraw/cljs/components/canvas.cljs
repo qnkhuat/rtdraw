@@ -1,8 +1,10 @@
 (ns rtdraw.cljs.components.canvas
   (:require [reagent.core :as r]
             [rtdraw.cljs.components.mui :refer [Button FormControl MenuItem Select InputLabel Slider]]
+            [rtdraw.cljs.env :refer [API_URL]]
             [cljs.core.match :refer [match]]
             [clojure.edn :as edn]
+            [lambdaisland.uri :refer [uri]]
             [cljs.core.async :as a :refer [put! >! <! go go-loop dropping-buffer chan]]
             ["fabric" :as fabric]
             ))
@@ -52,10 +54,14 @@
     {:x (get pointer "x")
      :y (get pointer "y")}))
 
+
 (defn Canvas
   []
   (let [ch (chan (dropping-buffer 1024))
-        conn (js/WebSocket.  "ws://localhost:3000/ws/")
+        conn (js/WebSocket.  (str (assoc (uri "")
+                                        :scheme "ws"
+                                        :host API_URL
+                                        :path "/ws/")))
 
         state (r/atom {
                        :color "black"
