@@ -10,22 +10,20 @@
 (defonce connections (atom #{}))
 
 (defroutes routes
-  (route/resources "/")
   (route/not-found "Where are you going?"))
 
 (def ws-handler {:on-connect (fn [ws] 
-                               (swap! connections conj ws)
-                               )
+                               (swap! connections conj ws))
+
                  :on-error (fn [ws _e] 
-                             (swap! connections disj ws)
-                             )
+                             (swap! connections disj ws))
+
                  :on-close (fn [ws _status-code _reason] 
-                             (swap! connections disj ws)
-                             )
+                             (swap! connections disj ws))
+
                  :on-text (fn [ws text-message] 
                             ; broadcast this message to everyone except itself
-                            (doall (map #(send! % text-message) (filter #(not= ws %) @connections)))
-                            )
+                            (doall (map #(send! % text-message) (filter #(not= ws %) @connections))))
                  })
 
 (def websocket-routes {"/ws" ws-handler})
@@ -34,8 +32,7 @@
   (-> #'routes
       wrap-keyword-params
       wrap-params
-      wrap-session
-      ))
+      wrap-session))
 
 (defn -main [& _args]
   (run-jetty app {:port 3000 :websockets websocket-routes}))
