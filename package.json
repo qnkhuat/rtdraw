@@ -8,6 +8,7 @@
     "postcss:build": "TAILWIND_MODE=build postcss src/rtdraw/cljs/tailwind.css -o ./public/css/main.css --verbose",
     "postcss:watch": "TAILWIND_MODE=watch postcss src/rtdraw/cljs/tailwind.css -o ./public/css/main.css --verbose -w",
     "postcss:release": "NODE_ENV=production postcss src/rtdraw/cljs/tailwind.css -o ./public/css/main.css --verbose",
+    "uber:release": "clojure -T:build uber",
     "dev": "run-p -l *:watch",
     "release": "run-s *:release"
   },

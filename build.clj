@@ -1,29 +1,26 @@
 (ns build
-  (:require [clojure.tools.build.api :as b]))
-  (println "ha")
+  (:require [clojure.tools.build.api :as b]
+            [clojure.pprint :refer [pprint]]))
 
-(def lib 'rtdraw)
-(def version (format "1.0.%s" (b/git-count-revs nil)))
 (def class-dir "target/classes")
+(def src-dir "src/rtdraw/clj/")
 (def basis (b/create-basis {:project "deps.edn"}))
-(def uber-file (format "target/%s-%s.jar" (name lib) version))
+(def uber-file "target/rtdraw.jar")
 
 (defn clean [_]
   (b/delete {:path "target"}))
 
 (defn uber [_]
-  (println "ha")
   (clean nil)
-  (println "le")
 
-  (b/copy-dir {:src-dirs ["src" "resources"]
+  (b/copy-dir {:src-dirs [src-dir "resources"]
                :target-dir class-dir})
-  (println "basis:" basis)
 
   (b/compile-clj {:basis basis
-                  :src-dirs ["src"]
+                  :src-dirs [src-dir]
                   :class-dir class-dir})
 
   (b/uber {:class-dir class-dir
            :uber-file uber-file
-           :basis basis}))
+           :basis basis
+           :main 'rtdraw.clj.core}))
