@@ -6,6 +6,7 @@
             [clojure.edn :as edn]
             [lambdaisland.uri :refer [uri]]
             [cljs.core.async :as a :refer [put! >! <! go go-loop dropping-buffer chan]]
+            [clojure.string :as s]
             ["fabric" :as fabric]
             ))
 
@@ -59,8 +60,9 @@
   []
   (let [ch (chan (dropping-buffer 1024))
         conn (js/WebSocket.  (str (assoc (uri "")
-                                        :scheme "wss"
-                                        :host API_URL
+                                        :scheme (if (= "https" (:scheme (uri API_URL))) "wss" "ws") 
+                                        :host (:host (uri API_URL))
+                                        :port (:port (uri API_URL))
                                         :path "/ws/")))
 
         state (r/atom {
