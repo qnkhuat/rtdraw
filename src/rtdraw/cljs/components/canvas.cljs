@@ -59,7 +59,7 @@
   []
   (let [ch (chan (dropping-buffer 1024))
         conn (js/WebSocket.  (str (assoc (uri "")
-                                        :scheme "ws"
+                                        :scheme "wss"
                                         :host API_URL
                                         :path "/ws/")))
 
