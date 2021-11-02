@@ -10,6 +10,7 @@
     "postcss:release": "NODE_ENV=production postcss src/rtdraw/cljs/tailwind.css -o ./public/css/main.css --verbose",
     "uber": "clojure -T:build uber",
     "dev": "run-p -l *:watch",
+    "dev-server": "clojure -M:dev:cider-clj",
     "release": "run-s *:release"
   },
   "devDependencies": {

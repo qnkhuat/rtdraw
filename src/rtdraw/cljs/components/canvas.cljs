@@ -59,11 +59,13 @@
 (defn Canvas
   []
   (let [ch (chan (dropping-buffer 1024))
-        conn (js/WebSocket.  (str (assoc (uri "")
-                                        :scheme (if (= "https" (:scheme (uri API_URL))) "wss" "ws") 
-                                        :host (:host (uri API_URL))
-                                        :port (:port (uri API_URL))
-                                        :path "/ws/")))
+        ws-url (str (assoc (uri "")
+                           :scheme (if (= "https" (:scheme (uri API_URL))) "wss" "ws") 
+                           :host (:host (uri API_URL))
+                           :port (:port (uri API_URL))
+                           :path "/ws/"))
+        _ (js/console.log "Connecting to : " ws-url)
+        conn (js/WebSocket.  ws-url)
 
         state (r/atom {
                        :color "black"
@@ -263,8 +265,11 @@
 
               (set! (.-onmessage conn) (fn [msg] 
                                           (js/console.log "received a message: " msg)
-                                          (handle-draw (->> msg .-data edn/read-string))
-                                          ))
+                                          (handle-draw (->> msg .-data edn/read-string))))
+
+              (set! (.-onopen conn) (fn [_event] 
+                                 (js/console.log "Connected to : " ws-url)))
+
 
               ; loop to draw
               (go-loop [msg (<! ch)]
