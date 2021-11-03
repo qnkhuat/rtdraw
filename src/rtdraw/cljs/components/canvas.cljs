@@ -13,6 +13,20 @@
 (defn s-uuid []
   (str (random-uuid)))
 
+
+(defn calc-dimension 
+  [points]
+  (let [xs (map #(or (:x %) (get % "x")) points)
+        ys (map #(or (:y %) (get % "y")) points)
+        minX (apply min xs)
+        maxX (apply max xs)
+        minY (apply min ys)
+        maxY (apply max ys)]
+    {:left minX
+     :top minY
+     :width (- maxX minX)
+     :height (- maxY minY)}))
+  
 (defn get-abs-left
   "Return the absolute left of an object whether it's alone or it's in a group"
   [o]
@@ -73,7 +87,7 @@
                  :left pointer-x
                  :top pointer-y
                  :stroke (:color opts)
-                 :radius 5
+                 :radius 20
                  }}
 
       :rectangle
@@ -82,22 +96,35 @@
                  :id (s-uuid)
                  :left pointer-x
                  :top pointer-y
-                 :width 5
-                 :height 5
+                 :width 20
+                 :height 20
                  :stroke (:color opts)
                  }}
 
       :line 
       {:mode mode
        :coords [pointer-x pointer-y
-                (+ pointer-x 5) pointer-y ]
+                (+ pointer-x 20) pointer-y ]
        :options {
                  :id (s-uuid)
                  :stroke (:color opts)
                  :left pointer-x
                  :top pointer-y
                  :strokeWidth 5
-                 }}))))
+                 }}
+
+      :polyline
+      {:mode mode
+       :points [{:x pointer-x :y pointer-y}]
+       :options {
+                 :id (s-uuid)
+                 :stroke (:color opts)
+                 :objectCaching false
+                 :fill "transparent"
+                 :dirty true
+                 }
+       }
+      ))))
 
 (defn Canvas
   []
@@ -113,7 +140,7 @@
                        :mouse :up ; mouse state, up or down?
                        :color "black"
                        :stroke-size 5
-                       :mode :pen
+                       :mode :polyline
                        :down-pointer {:x nil, :y nil}
                        :copied-object nil ; store object to duplicate
                        :current-mouse-pointer nil
@@ -132,6 +159,7 @@
           ; save current mouse pointer as state
           (swap! state assoc :current-mouse-pointer (get-mouse-pointer e))
 
+          ; TODO: move this to a function
           (when (and (#{:down} (:mouse @state)) (:creating-object @state))
             (let 
               [id (:creating-object @state)
@@ -149,6 +177,19 @@
                                  :line {:x2 x
                                         :y2 y}
 
+                                 ; the points conj might be come expensive as drawing more and more, 
+                                 ; should send the new point only
+                                 :polyline (let [_ (.push (.-points object) {"x" x "y" y})
+                                                 points (js->clj (.-points object))
+                                                 dim (calc-dimension points)]
+                                             {:points points 
+                                              :left (:left dim)
+                                              :top (:top dim)
+                                              :width (:width dim)
+                                              :height (:height dim)
+                                              :pathOffset {:x (+ (:left dim) (/ (:width dim) 2)) 
+                                                           :y (+ (:top dim) (/ (:height dim) 2))}})
+                                             
                                  :rect {:originX (if (< (.-left object) x) "left" "right")
                                         :originY (if (< (.-top object) y) "top" "bottom")
                                         :width (Math/abs (- (.-left object) x))
@@ -168,18 +209,18 @@
         handle-mouse-down
         (fn [e] 
           (swap! state assoc :mouse :down)
-          (when (not (#{:select :pen} (:mode @state) ))
-            ; create a new object with fixed size under the cursor
-            ; only works for shapes
-            ; TODO : move this logic to a function
+          ; create a new object with fixed size under the cursor
+          ; TODO : move this logic to a function
+          (when (and (= 0 (count (.getActiveObjects @canvas)))
+                     (not= :select (-> @state :mode keyword)))
             (let [pointer (get (js->clj e) "pointer")
                   payload (make-object (:mode @state) pointer @state)
                   msg {:type :action-object-add 
                        :payload payload}]
               (put! ch msg)
               ; this will be reset in mouse-up
-              (swap! state assoc :creating-object (->> payload :options :id))
-              )))
+              (swap! state assoc :creating-object (->> payload :options :id)))))
+              
 
         
         handle-object-modified
@@ -188,7 +229,7 @@
 
         handle-object-added
         (fn [e]
-          (js/console.log "object:added " (clj->js e)))
+          (js/console.log "object:added (" (.. e -target -type) "): " (clj->js e)))
 
         handle-object-modify
         (fn [_e]
@@ -212,11 +253,7 @@
 
         handle-change-pen
         (fn [e]
-          (let [selected-pen (keyword (.. e -target -value))]
-            (if (= selected-pen :pen)
-              (set! (.-isDrawingMode @canvas) true)
-              (set! (.-isDrawingMode @canvas) false))
-            (swap! state assoc :mode selected-pen)))
+          (swap! state assoc :mode (keyword (.. e -target -value))))
 
         handle-change-stroke-size
         (fn [e]
@@ -245,11 +282,15 @@
                    (when-let [object (case mode
                                        :rectangle (fabric/fabric.Rect. (clj->js options))
                                        :circle (fabric/fabric.Circle. (clj->js options))
+                                       :polyline (fabric/fabric.Polyline. (->> msg :payload :points clj->js) 
+                                                                          (clj->js options))
                                        :line (fabric/fabric.Line. (->> msg :payload :coords clj->js) 
                                                                   (clj->js options)))]
                      (.add @canvas object)
-                     (swap! state assoc :mode :select)))
 
+                     ; auto switch batch to select mode after create an object
+                     (swap! state assoc :mode :select)
+                     ))
 
                  ; TODO: this will not work for remote drawer
                  {:type :action-object-add-with-object, :payload {:object object}}
@@ -263,7 +304,7 @@
 
                  {:type :action-object-modify :payload {:id id, :options options}}
                  (do
-                   (doall (map #(.set % (clj->js options)) 
+                   (doall (map #(do (.set % (clj->js options)) (.setCoords %)) 
                                (filter #(= id (.-id %)) (.getObjects @canvas))))
                    (.renderAll @canvas))
 
@@ -321,7 +362,7 @@
             (let [width (.-offsetWidth @this)
                   height (.-offsetHeight @this)]
               (reset! canvas (fabric/fabric.Canvas. "canvas" (clj->js {:width width :height height})))
-              (set! (.-isDrawingMode @canvas) true)
+              (set! (.-isDrawingMode @canvas) false)
               (.addEventListener js/document "keydown" handle-key-down)
 
               (.on @canvas "mouse:up" handle-mouse-up)
@@ -368,7 +409,7 @@
                 [MenuItem {:value :rectangle} "Rect"]
                 [MenuItem {:value :line} "Line"]
                 [MenuItem {:value :circle} "Circle"]
-                [MenuItem {:value :pen} "Pen"]
+                [MenuItem {:value :polyline} "Pen"]
                 ]
               ]
 
