@@ -64,7 +64,6 @@
                            :host (:host (uri API_URL))
                            :port (:port (uri API_URL))
                            :path "/ws/"))
-        _ (js/console.log "Connecting to : " ws-url)
         conn (js/WebSocket.  ws-url)
 
         state (r/atom {
@@ -84,7 +83,6 @@
         (fn [_e]
           (swap! state assoc :mode :selecting))
 
-
         handle-mouse-move
         (fn [e]
           (swap! state assoc :current-mouse-pointer (get-mouse-pointer e)))
@@ -103,12 +101,10 @@
                                      ;:stroke-size (:stroke-size @state)
                                      :id (s-uuid)
                                      :radius 25
-                                     }
-                           }
+                                     }}
                   msg (merge {:type :action-object-add :payload payload})]
               (swap! state assoc :last-created-payload payload)
-              (put! ch msg)
-              )))
+              (put! ch msg))))
 
         
         handle-object-modified
@@ -122,9 +118,7 @@
                      ; this call back doesn't need to draw bc it's already drawed
                      ; so send directly to the remote
                      ;(let [real-object (first (filter #(= id (.-id object)) (.getObjects @canvas)))]
-                     (do 
-                     (js/console.log "objects ne: " (.getObjects @canvas))
-                     (.send conn {:type :action-object-modify, 
+                     (.send conn {:type :action-objects-modify, 
                                   :payload {:id (.-id object), 
                                             :options {
                                                       ; TODO: group scaling is still not working right, the top, left of object also need to be scaled
@@ -135,8 +129,7 @@
                                                       :width (.-width object)
                                                       :angle (.-angle object)
                                                       :height (.-height object)
-                                                      }}}))))
-            ))
+                                                      }}})))))
 
         handle-change-pen
         (fn [e]
@@ -155,7 +148,13 @@
           (put! ch {:type :action-clear}))
 
         handle-draw
-        (fn [msg]
+        (fn 
+          ;;; Main handler that will directly interact with the canvas, 
+          ;;; All of manipulation to the canvas should go through this function.
+
+          ;;; Msg from remote will go through this handler as well, so this function should carefully
+          ;;; access the states so that the render will be in-sync
+          [msg]
           ; This shouldn't access state
           (println "draw msg: " msg)
           (println "state: " @state)
@@ -166,25 +165,22 @@
                                        :rectangle (fabric/fabric.Rect. (clj->js options))
                                        :circle (fabric/fabric.Circle. (clj->js options))
                                        nil)]
-                     (.add @canvas object)
-                     ))
+                     (.add @canvas object)))
 
                  ; TODO: this will not work for remote drawer
-                 {:type :action-object-with-object, :payload {:object object}}
+                 {:type :action-object-add-with-object, :payload {:object object}}
                  (.add @canvas (js->clj object))
 
-                 {:type :action-object-remove :payload {:id id}}
+                 {:type :action-objects-remove :payload {:id id}}
                  (doall (map #(.remove @canvas %) 
                              (filter #(= id (.-id %)) (.getObjects @canvas))))
 
-                 {:type :action-object-modify :payload {:id id, :options options}}
+                 {:type :action-objects-modify :payload {:id id, :options options}}
                  (do
-                   ;(doall (map #(.set % (clj->js new-options)) (filter #(= id (.-id %)) (.getObjects @canvas)))))
-                   ;(.set (.getActiveObject @canvas) (clj->js {:angle 45})))
                    (doall (map #(.set % (clj->js options)) 
                                (filter #(= id (.-id %)) (.getObjects @canvas))))
-                   (.renderAll @canvas)
-                   )
+                   (.renderAll @canvas))
+                   
                  ;(doall (map #(fabric/fabric.util.qrDecompose mt)))
 
                  {:type :action-clear}
@@ -204,20 +200,16 @@
             ; Ctrl/Cmd V
             (and (= (.-keyCode e) 86 ) (or (.-ctrlKey e) (.-metaKey e)))
             (when-let [cloned-object (:copied-object @state)]
-              ; update the copied object, or else the next paste will replace the last one
-              (.clone cloned-object #(swap! state assoc :copied-object %))
               ; create new object under the cursor
               (.set cloned-object "id" (s-uuid))
               (.set cloned-object "left" (-> @state :current-mouse-pointer :x))
               (.set cloned-object "top" (-> @state :current-mouse-pointer :y))
-              (put! ch {:type :action-object-with-object :payload {:object (clj->js cloned-object)}})
-              )
+              (put! ch {:type :action-object-add-with-object :payload {:object (clj->js cloned-object)}}))
 
             ; Delete
             (= (.-keyCode e) 8)
-            (doall (map #(put! ch {:type :action-object-remove :payload {:id (.-id %)}}) 
-                        (.getActiveObjects @canvas)))
-            ))
+            (doall (map #(put! ch {:type :action-objects-remove :payload {:id (.-id %)}}) 
+                        (.getActiveObjects @canvas)))))
 
         handle-selection-created
         (fn [e]
