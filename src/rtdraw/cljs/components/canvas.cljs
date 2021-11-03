@@ -1,3 +1,4 @@
+; https://exceptionnotfound.net/drawing-with-fabricjs-and-typescript-part-2-straight-lines/
 (ns rtdraw.cljs.components.canvas
   (:require [reagent.core :as r]
             [rtdraw.cljs.components.mui :refer [Button FormControl MenuItem Select InputLabel Slider]]
@@ -54,6 +55,10 @@
     {:x (get pointer "x")
      :y (get pointer "y")}))
 
+(defn get-object-by-id
+  [objects id]
+  (first (filter #(= id (.-id %)) objects)))
+
 (defn make-object
   ([mode pointer] make-object mode pointer {:color "black"})
 
@@ -67,9 +72,8 @@
                  :id (s-uuid)
                  :left pointer-x
                  :top pointer-y
-                 :width 50
-                 :height 50
                  :stroke (:color opts)
+                 :radius 5
                  }}
 
       :rectangle
@@ -78,16 +82,15 @@
                  :id (s-uuid)
                  :left pointer-x
                  :top pointer-y
-                 :width 50
-                 :height 50
+                 :width 5
+                 :height 5
                  :stroke (:color opts)
-                 :radius 25 ; this is for circle only
                  }}
 
       :line 
       {:mode mode
        :coords [pointer-x pointer-y
-                (+ pointer-x 50) pointer-y ]
+                (+ pointer-x 5) pointer-y ]
        :options {
                  :id (s-uuid)
                  :stroke (:color opts)
@@ -107,12 +110,14 @@
         conn (js/WebSocket.  ws-url)
 
         state (r/atom {
+                       :mouse :up ; mouse state, up or down?
                        :color "black"
                        :stroke-size 5
                        :mode :pen
                        :down-pointer {:x nil, :y nil}
                        :copied-object nil ; store object to duplicate
                        :current-mouse-pointer nil
+                       :creating-object nil
                        })
 
         this (atom nil) ; store canvas ref
@@ -120,17 +125,50 @@
         canvas (atom nil) ; fabric canvas instance
 
         handle-mouse-up
-        (fn [_e] )
+        (fn [_e] (swap! state merge {:mouse :up, :creating-object nil}))
 
         handle-mouse-move
         (fn [e]
-          (swap! state assoc :current-mouse-pointer (get-mouse-pointer e)))
+          ; save current mouse pointer as state
+          (swap! state assoc :current-mouse-pointer (get-mouse-pointer e))
 
-                      
+          (when (and (#{:down} (:mouse @state)) (:creating-object @state))
+            (let 
+              [id (:creating-object @state)
+               object (get-object-by-id (.getObjects @canvas) id)
+               object-type (.get object "type")
+               pointer (get-mouse-pointer e)
+               x (:x pointer)
+               y (:y pointer)]
+              (put! ch
+                    {:type  :action-object-modify
+                     :payload {:id id
+                               :options 
+                               (case (keyword object-type)
+
+                                 :line {:x2 x
+                                        :y2 y}
+
+                                 :rect {:originX (if (< (.-left object) x) "left" "right")
+                                        :originY (if (< (.-top object) y) "top" "bottom")
+                                        :width (Math/abs (- (.-left object) x))
+                                        :height (Math/abs (- (.-top object) y))}
+                                        
+
+                                 :circle {:originX (if (< (.-left object) x) "left" "right")
+                                          :originY (if (< (.-top object) y) "top" "bottom")
+                                          :radius (min (/ (Math/abs (- (.-left object) x)) 2)
+                                                       (/ (Math/abs (- (.-top object) y)) 2))}
+                                 )}})
+                            
+            )
+          
+          ))
 
         handle-mouse-down
         (fn [e] 
-          (when (not (#{:selecting :pen} (:mode @state) ))
+          (swap! state assoc :mouse :down)
+          (when (not (#{:select :pen} (:mode @state) ))
             ; create a new object with fixed size under the cursor
             ; only works for shapes
             ; TODO : move this logic to a function
@@ -138,12 +176,19 @@
                   payload (make-object (:mode @state) pointer @state)
                   msg {:type :action-object-add 
                        :payload payload}]
-              (put! ch msg))))
+              (put! ch msg)
+              ; this will be reset in mouse-up
+              (swap! state assoc :creating-object (->> payload :options :id))
+              )))
 
         
         handle-object-modified
         (fn [e]
-          (js/console.log "object: modified: " (clj->js e)))
+          (js/console.log "object:modified: " (clj->js e)))
+
+        handle-object-added
+        (fn [e]
+          (js/console.log "object:added " (clj->js e)))
 
         handle-object-modify
         (fn [_e]
@@ -193,7 +238,7 @@
           ;;; Msg from remote will go through this handler as well, so this function should carefully
           ;;; access the states so that the render will be in-sync
           [msg]
-          (println "draw msg: " (clj->js msg))
+          ;(js/console.log "draw msg: " (clj->js msg))
           (match msg
                  {:type :action-object-add, :payload {:mode mode, :options options}}
                  (when @canvas
@@ -203,14 +248,14 @@
                                        :line (fabric/fabric.Line. (->> msg :payload :coords clj->js) 
                                                                   (clj->js options)))]
                      (.add @canvas object)
-                     (swap! state assoc :mode :selecting)))
+                     (swap! state assoc :mode :select)))
 
 
                  ; TODO: this will not work for remote drawer
                  {:type :action-object-add-with-object, :payload {:object object}}
                  (do 
                    (.add @canvas (js->clj object))
-                   (swap! state assoc :mode :selecting))
+                   (swap! state assoc :mode :select))
 
                  {:type :action-object-remove :payload {:id id}}
                  (doall (map #(.remove @canvas %) 
@@ -221,8 +266,6 @@
                    (doall (map #(.set % (clj->js options)) 
                                (filter #(= id (.-id %)) (.getObjects @canvas))))
                    (.renderAll @canvas))
-
-                 ;(doall (map #(fabric/fabric.util.qrDecompose mt)))
 
                  {:type :action-clear}
                  (.clear @canvas)
@@ -254,20 +297,20 @@
 
         handle-selection-created
         (fn [e]
-            (set! (.-target e) "hasRotatingPoint" false)
-            (swap! state assoc :selecting true))
+          (set! (.-target e) "hasRotatingPoint" false)
+          (swap! state assoc :activeObjects (.getActiveObjects @canvas)))
 
         handle-selection-updated
         (fn [e]
-            (set! (.-target e) "hasRotatingPoint" false)
-            (swap! state assoc :selecting true))
+          (set! (.-target e) "hasRotatingPoint" false)
+          (swap! state assoc :activeObjects (.getActiveObjects @canvas)))
 
         handle-selection-cleared
         (fn [_e]
-          (swap! state assoc :selecting false))
+          (swap! state assoc :activeObjects nil))
 
         testing-handler
-        (fn [e]
+        (fn [_e]
           (js/console.log "s-uuid: "))
 
         ]
@@ -284,7 +327,7 @@
               (.on @canvas "mouse:up" handle-mouse-up)
               (.on @canvas "mouse:down" handle-mouse-down)
               (.on @canvas "mouse:move" handle-mouse-move)
-              (.on @canvas "object:created" #(js/console.log "object:created: " (clj->js %)))
+              (.on @canvas "object:added" handle-object-added)
               (.on @canvas "object:moving" handle-object-modify); TODO :figure out how rotate group?
               (.on @canvas "object:scaling" handle-object-modify)
               (.on @canvas "object:rotating" handle-object-modify) 
@@ -292,6 +335,7 @@
               (.on @canvas "object:modified" handle-object-modified)
               (.on @canvas "selection:created" handle-selection-created)
               (.on @canvas "selection:updated" handle-selection-updated)
+              (.on @canvas "selection:cleared" handle-selection-cleared)
 
               (set! (.-onmessage conn) (fn [msg] 
                                           (js/console.log "received a message: " msg)
@@ -320,7 +364,7 @@
                         :value (:mode @state)
                         :onChange handle-change-pen
                         }
-                [MenuItem {:value :selecting} "Selecting"]
+                [MenuItem {:value :select} "Select"]
                 [MenuItem {:value :rectangle} "Rect"]
                 [MenuItem {:value :line} "Line"]
                 [MenuItem {:value :circle} "Circle"]
