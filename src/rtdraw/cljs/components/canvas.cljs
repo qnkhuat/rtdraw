@@ -2,12 +2,9 @@
 (ns rtdraw.cljs.components.canvas
   (:require [reagent.core :as r]
             [rtdraw.cljs.components.mui :refer [Button FormControl MenuItem Select InputLabel Slider]]
-            [rtdraw.cljs.env :refer [API_URL]]
             [cljs.core.match :refer [match]]
             [clojure.edn :as edn]
-            [lambdaisland.uri :refer [uri]]
-            [cljs.core.async :as a :refer [put! >! <! go go-loop dropping-buffer chan]]
-            [clojure.string :as s]
+            [cljs.core.async :as a :refer [put! <! go-loop dropping-buffer chan]]
             ["fabric" :as fabric]))
 
 (defn s-uuid []
@@ -76,7 +73,7 @@
 (defn make-object
   ([mode pointer] make-object mode pointer {:color "black"})
 
-  ([mode pointer opts]
+  ([mode pointer color]
   (let [pointer-x (get pointer "x")
         pointer-y (get pointer "y")]
     (case mode
@@ -86,7 +83,7 @@
                  :id (s-uuid)
                  :left pointer-x
                  :top pointer-y
-                 :stroke (:color opts)
+                 :stroke color
                  :radius 20
                  }}
 
@@ -98,7 +95,7 @@
                  :top pointer-y
                  :width 20
                  :height 20
-                 :stroke (:color opts)
+                 :stroke color
                  }}
 
       :line 
@@ -107,7 +104,7 @@
                 (+ pointer-x 20) pointer-y ]
        :options {
                  :id (s-uuid)
-                 :stroke (:color opts)
+                 :stroke color
                  :left pointer-x
                  :top pointer-y
                  :strokeWidth 5
@@ -118,7 +115,7 @@
        :points [{:x pointer-x :y pointer-y}]
        :options {
                  :id (s-uuid)
-                 :stroke (:color opts)
+                 :stroke color
                  :objectCaching false
                  :fill "transparent"
                  :dirty true
@@ -126,26 +123,25 @@
        }
       ))))
 
-(defn Canvas
-  []
-  (let [ch (chan (dropping-buffer 1024))
-        ws-url (str (assoc (uri "")
-                           :scheme (if (= "https" (:scheme (uri API_URL))) "wss" "ws") 
-                           :host (:host (uri API_URL))
-                           :port (:port (uri API_URL))
-                           :path "/ws/"))
-        conn (js/WebSocket.  ws-url)
+(def default-props
+  {:color "black"
+   :stroke-size 5
+   :mode :rectangle
+   :ws-url nil})
 
-        state (r/atom {
+(defn Canvas
+  [& {:keys [id mode stroke-size color  ws-url] :as args}]
+  (let [
+        ch (chan (dropping-buffer 1024))
+        _ (js/console.log "connecting to: " (clj->js args))
+        conn (js/WebSocket. ws-url)
+
+        state (r/atom (merge args {
                        :mouse :up ; mouse state, up or down?
-                       :color "black"
-                       :stroke-size 5
-                       :mode :polyline
-                       :down-pointer {:x nil, :y nil}
                        :copied-object nil ; store object to duplicate
                        :current-mouse-pointer nil
                        :creating-object nil
-                       })
+                       }))
 
         this (atom nil) ; store canvas ref
 
@@ -159,6 +155,8 @@
           ; save current mouse pointer as state
           (swap! state assoc :current-mouse-pointer (get-mouse-pointer e))
 
+          ; modify the object if in creating mode
+          ; creating mode is when user first add an object and mouse is still down
           ; TODO: move this to a function
           (when (and (#{:down} (:mouse @state)) (:creating-object @state))
             (let 
@@ -200,29 +198,23 @@
                                           :originY (if (< (.-top object) y) "top" "bottom")
                                           :radius (min (/ (Math/abs (- (.-left object) x)) 2)
                                                        (/ (Math/abs (- (.-top object) y)) 2))}
-                                 )}})
+                                 )}}))))
                             
-            )
-          
-          ))
-
         handle-mouse-down
         (fn [e] 
           (swap! state assoc :mouse :down)
           ; create a new object with fixed size under the cursor
           ; TODO : move this logic to a function
           (when (and (= 0 (count (.getActiveObjects @canvas)))
-                     (not= :select (-> @state :mode keyword)))
+                     (not= :select mode))
             (let [pointer (get (js->clj e) "pointer")
-                  payload (make-object (:mode @state) pointer @state)
+                  payload (make-object mode pointer color)
                   msg {:type :action-object-add 
                        :payload payload}]
               (put! ch msg)
               ; this will be reset in mouse-up
               (swap! state assoc :creating-object (->> payload :options :id)))))
               
-
-        
         handle-object-modified
         (fn [e]
           (js/console.log "object:modified: " (clj->js e)))
@@ -275,8 +267,19 @@
           ;;; Msg from remote will go through this handler as well, so this function should carefully
           ;;; access the states so that the render will be in-sync
           [msg]
-          ;(js/console.log "draw msg: " (clj->js msg))
+          (js/console.log "draw msg: " (clj->js msg))
+          (js/console.log "type check: " (= :action-object-remove (:type msg)))
+          (js/console.log "payload" (clj->js (:payload msg)))
+          (match {:type :action-object-remove :payload {:id "ngokcq"}} 
+                 {:type :action-object-remove :payload {:id id}}
+                 (println "yea")
+
+                 :else (println "nope"))
           (match msg
+                 {:type :action-object-remove :payload {:id id}}
+                 (doall (map #(.remove @canvas %) 
+                             (filter #(= id (.-id %)) (.getObjects @canvas))))
+
                  {:type :action-object-add, :payload {:mode mode, :options options}}
                  (when @canvas
                    (when-let [object (case mode
@@ -292,15 +295,13 @@
                      (swap! state assoc :mode :select)
                      ))
 
+
                  ; TODO: this will not work for remote drawer
                  {:type :action-object-add-with-object, :payload {:object object}}
                  (do 
                    (.add @canvas (js->clj object))
                    (swap! state assoc :mode :select))
 
-                 {:type :action-object-remove :payload {:id id}}
-                 (doall (map #(.remove @canvas %) 
-                             (filter #(= id (.-id %)) (.getObjects @canvas))))
 
                  {:type :action-object-modify :payload {:id id, :options options}}
                  (do
@@ -359,6 +360,7 @@
           {
           :component-did-mount
           (fn []
+            (js/console.log "component did mount")
             (let [width (.-offsetWidth @this)
                   height (.-offsetHeight @this)]
               (reset! canvas (fabric/fabric.Canvas. "canvas" (clj->js {:width width :height height})))
@@ -394,15 +396,14 @@
                         (recur (<! ch)))))
 
           :reagent-render 
-          (fn [] 
-            [:div {:class "mt-24 mx-12"}
+          (fn [& {:keys [id mode stroke-size color  ws-url] :as args}]
+            [:div 
               [Button {:onClick handle-clear} "Clear"]
-              [Button {:onClick testing-handler} "Test"]
               [FormControl
-              [InputLabel {:id "select-pen"} "Pen"]
-              [Select {:labelId "select-pen"
+               [InputLabel {:id "select-pen"} "Pen"]
+               [Select {:labelId "select-pen"
                         :id "select"
-                        :value (:mode @state)
+                        :value mode
                         :onChange handle-change-pen
                         }
                 [MenuItem {:value :select} "Select"]
@@ -410,29 +411,29 @@
                 [MenuItem {:value :line} "Line"]
                 [MenuItem {:value :circle} "Circle"]
                 [MenuItem {:value :polyline} "Pen"]
-                ]
-              ]
+                ]]
+               
 
               [FormControl
-              [InputLabel {:id "select-color"} "color"]
-              [Select {:labelId "select-color"
+               [InputLabel {:id "select-color"} "color"]
+               [Select {:labelId "select-color"
                         :id "select"
-                        :value (:color @state)
+                        :value mode
                         :onChange handle-change-color
                         }
                 [MenuItem {:value "black"} "Black"]
                 [MenuItem {:value "red"} "Red"]
                 [MenuItem {:value "blue"} "Blue"]
-                ]
-              ]
+                ]]
+               
               [Slider {:aria-label "Stroke size" 
                       :min 1
                       :max 20
-                      :value (:stroke-size @state)
+                      :value stroke-size
                       :onChange handle-change-stroke-size}]
               [:canvas
               {:class "mt-24 ml-24 border-2 border-black w-screen h-screen"
-                :id "canvas"
+                :id id
                 :ref (fn [el] (reset! this el))
                 }]]
             )}

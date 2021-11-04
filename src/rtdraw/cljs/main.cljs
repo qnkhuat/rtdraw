@@ -1,9 +1,11 @@
 (ns rtdraw.cljs.main
   (:require [reagent.dom :as rd]
-            [rtdraw.cljs.components.canvas :refer [Canvas]]))
+            [rtdraw.cljs.env :refer [API_URL]]
+            [lambdaisland.uri :refer [uri]]
+            [rtdraw.cljs.components.drawer :refer [Drawer]]))
 
 (defn Application []
-  [:div [Canvas]])
+  [:div [Drawer]])
 
 (defn init []
   (rd/render 
