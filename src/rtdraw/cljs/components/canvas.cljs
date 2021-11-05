@@ -120,20 +120,19 @@
                   :fill "transparent"
                   :dirty true
                   }
-        }
-       ))))
+        }))))
+       
 
 (def default-props
   {:color "black"
    :stroke-size 5
    :mode :rectangle
-   :ws-url nil})
+   :ws-url nil
+   :clean false})
 
 (defn Canvas
   []
-  ;[& {:keys [id mode stroke-size color  ws-url] :as args}]
-  (let [
-        c (r/current-component)
+  (let [c (r/current-component)
         get-props (fn [] (merge default-props (r/props c))) ; get current props at any given time
         props (get-props)
 
@@ -158,8 +157,6 @@
         (fn [e]
           ; save current mouse pointer as state
           (swap! state assoc :current-mouse-pointer (get-mouse-pointer e))
-          ;(js/console.log "creating object: " (:creating-object @state))
-          ;(js/console.log "moving props  "  (get-props))
 
           ; modify the object if in creating mode
           ; creating mode is when user first add an object and mouse is still down
@@ -203,9 +200,8 @@
                                  :circle {:originX (if (< (.-left object) x) "left" "right")
                                           :originY (if (< (.-top object) y) "top" "bottom")
                                           :radius (min (/ (Math/abs (- (.-left object) x)) 2)
-                                                       (/ (Math/abs (- (.-top object) y)) 2))}
-                                 )}})
-              )))
+                                                       (/ (Math/abs (- (.-top object) y)) 2))})}}
+                    ))))
                             
         handle-mouse-down
         (fn [e] 
@@ -292,8 +288,6 @@
                      ; auto switch batch to select mode after create an object
                      (swap! state assoc :mode :select)))
                      
-
-
                  ; TODO: this will not work for remote drawer
                  {:type :action-object-add-with-object, :payload {:object object}}
                  ((.add @canvas (js->clj object))
@@ -396,7 +390,6 @@
           :reagent-render 
           (fn 
             []
-            ;[& {:keys [id mode stroke-size color  ws-url] :as args}]
             (let [props (get-props)]
               [:div 
                [Button {:onClick handle-clear} "Clear"]
