@@ -23,7 +23,7 @@
      :top minY
      :width (- maxX minX)
      :height (- maxY minY)}))
-  
+
 (defn get-abs-left
   "Return the absolute left of an object whether it's alone or it's in a group"
   [o]
@@ -74,54 +74,54 @@
   ([mode pointer] make-object mode pointer {:color "black"})
 
   ([mode pointer color]
-  (let [pointer-x (get pointer "x")
-        pointer-y (get pointer "y")]
-    (case mode
-      :circle
-      {:mode mode
-       :options {
-                 :id (s-uuid)
-                 :left pointer-x
-                 :top pointer-y
-                 :stroke color
-                 :radius 20
-                 }}
+   (let [pointer-x (get pointer "x")
+         pointer-y (get pointer "y")]
+     (case mode
+       :circle
+       {:mode mode
+        :options {
+                  :id (s-uuid)
+                  :left pointer-x
+                  :top pointer-y
+                  :stroke color
+                  :radius 20
+                  }}
 
-      :rectangle
-      {:mode mode
-       :options {
-                 :id (s-uuid)
-                 :left pointer-x
-                 :top pointer-y
-                 :width 20
-                 :height 20
-                 :stroke color
-                 }}
+       :rectangle
+       {:mode mode
+        :options {
+                  :id (s-uuid)
+                  :left pointer-x
+                  :top pointer-y
+                  :width 20
+                  :height 20
+                  :stroke color
+                  }}
 
-      :line 
-      {:mode mode
-       :coords [pointer-x pointer-y
-                (+ pointer-x 20) pointer-y ]
-       :options {
-                 :id (s-uuid)
-                 :stroke color
-                 :left pointer-x
-                 :top pointer-y
-                 :strokeWidth 5
-                 }}
+       :line 
+       {:mode mode
+        :coords [pointer-x pointer-y
+                 (+ pointer-x 20) pointer-y ]
+        :options {
+                  :id (s-uuid)
+                  :stroke color
+                  :left pointer-x
+                  :top pointer-y
+                  :strokeWidth 5
+                  }}
 
-      :polyline
-      {:mode mode
-       :points [{:x pointer-x :y pointer-y}]
-       :options {
-                 :id (s-uuid)
-                 :stroke color
-                 :objectCaching false
-                 :fill "transparent"
-                 :dirty true
-                 }
-       }
-      ))))
+       :polyline
+       {:mode mode
+        :points [{:x pointer-x :y pointer-y}]
+        :options {
+                  :id (s-uuid)
+                  :stroke color
+                  :objectCaching false
+                  :fill "transparent"
+                  :dirty true
+                  }
+        }
+       ))))
 
 (def default-props
   {:color "black"
@@ -130,18 +130,22 @@
    :ws-url nil})
 
 (defn Canvas
-  [& {:keys [id mode stroke-size color  ws-url] :as args}]
+  []
+  ;[& {:keys [id mode stroke-size color  ws-url] :as args}]
   (let [
-        ch (chan (dropping-buffer 1024))
-        _ (js/console.log "connecting to: " (clj->js args))
-        conn (js/WebSocket. ws-url)
+        c (r/current-component)
+        get-props (fn [] (merge default-props (r/props c))) ; get current props at any given time
+        props (get-props)
 
-        state (r/atom (merge args {
-                       :mouse :up ; mouse state, up or down?
-                       :copied-object nil ; store object to duplicate
-                       :current-mouse-pointer nil
-                       :creating-object nil
-                       }))
+        ch (chan (dropping-buffer 1024))
+        conn (js/WebSocket. (:ws-url props))
+
+        state (r/atom 
+                {:mouse :up ; mouse state, up or down?
+                 :copied-object nil ; store object to duplicate
+                 :current-mouse-pointer nil
+                 :creating-object nil
+                 })
 
         this (atom nil) ; store canvas ref
 
@@ -154,6 +158,8 @@
         (fn [e]
           ; save current mouse pointer as state
           (swap! state assoc :current-mouse-pointer (get-mouse-pointer e))
+          ;(js/console.log "creating object: " (:creating-object @state))
+          ;(js/console.log "moving props  "  (get-props))
 
           ; modify the object if in creating mode
           ; creating mode is when user first add an object and mouse is still down
@@ -198,22 +204,25 @@
                                           :originY (if (< (.-top object) y) "top" "bottom")
                                           :radius (min (/ (Math/abs (- (.-left object) x)) 2)
                                                        (/ (Math/abs (- (.-top object) y)) 2))}
-                                 )}}))))
+                                 )}})
+              )))
                             
         handle-mouse-down
         (fn [e] 
           (swap! state assoc :mouse :down)
           ; create a new object with fixed size under the cursor
           ; TODO : move this logic to a function
-          (when (and (= 0 (count (.getActiveObjects @canvas)))
-                     (not= :select mode))
-            (let [pointer (get (js->clj e) "pointer")
-                  payload (make-object mode pointer color)
-                  msg {:type :action-object-add 
-                       :payload payload}]
-              (put! ch msg)
-              ; this will be reset in mouse-up
-              (swap! state assoc :creating-object (->> payload :options :id)))))
+          (let [props (r/props c)]
+                
+            (when (and (= 0 (count (.getActiveObjects @canvas)))
+                       (not= :select (:mode props)))
+              (let [pointer (get (js->clj e) "pointer")
+                    payload (make-object (:mode props) pointer (:color props))
+                    msg {:type :action-object-add 
+                         :payload payload}]
+                (put! ch msg)
+                ; this will be reset in mouse-up
+                (swap! state assoc :creating-object (->> payload :options :id))))))
               
         handle-object-modified
         (fn [e]
@@ -267,19 +276,8 @@
           ;;; Msg from remote will go through this handler as well, so this function should carefully
           ;;; access the states so that the render will be in-sync
           [msg]
-          (js/console.log "draw msg: " (clj->js msg))
-          (js/console.log "type check: " (= :action-object-remove (:type msg)))
-          (js/console.log "payload" (clj->js (:payload msg)))
-          (match {:type :action-object-remove :payload {:id "ngokcq"}} 
-                 {:type :action-object-remove :payload {:id id}}
-                 (println "yea")
-
-                 :else (println "nope"))
+          ;(js/console.log "draw msg: " (clj->js msg))
           (match msg
-                 {:type :action-object-remove :payload {:id id}}
-                 (doall (map #(.remove @canvas %) 
-                             (filter #(= id (.-id %)) (.getObjects @canvas))))
-
                  {:type :action-object-add, :payload {:mode mode, :options options}}
                  (when @canvas
                    (when-let [object (case mode
@@ -292,23 +290,25 @@
                      (.add @canvas object)
 
                      ; auto switch batch to select mode after create an object
-                     (swap! state assoc :mode :select)
-                     ))
+                     (swap! state assoc :mode :select)))
+                     
 
 
                  ; TODO: this will not work for remote drawer
                  {:type :action-object-add-with-object, :payload {:object object}}
-                 (do 
-                   (.add @canvas (js->clj object))
+                 ((.add @canvas (js->clj object))
                    (swap! state assoc :mode :select))
 
+                 {:type :action-object-remove :payload {:id object-id}}
+                 (doall (map #(.remove @canvas %) 
+                             (filter #(= object-id (.-id %)) (.getObjects @canvas))))
 
-                 {:type :action-object-modify :payload {:id id, :options options}}
-                 (do
-                   (doall (map #(do (.set % (clj->js options)) (.setCoords %)) 
-                               (filter #(= id (.-id %)) (.getObjects @canvas))))
-                   (.renderAll @canvas))
-
+                 {:type :action-object-modify :payload {:id object-id, :options options}}
+                 (do (doall (map #(do (.set % (clj->js options)))
+                                 (filter #(= object-id (.-id %)) (.getObjects @canvas))))
+                     (.renderAll @canvas))
+                     
+                 
                  {:type :action-clear}
                  (.clear @canvas)
 
@@ -360,7 +360,6 @@
           {
           :component-did-mount
           (fn []
-            (js/console.log "component did mount")
             (let [width (.-offsetWidth @this)
                   height (.-offsetHeight @this)]
               (reset! canvas (fabric/fabric.Canvas. "canvas" (clj->js {:width width :height height})))
@@ -385,8 +384,7 @@
                                           (handle-draw (->> msg .-data edn/read-string))))
 
               (set! (.-onopen conn) (fn [_event] 
-                                 (js/console.log "Connected to : " ws-url)))
-
+                                 (js/console.log "Connected to : " (:ws-url props))))
 
               ; loop to draw
               (go-loop [msg (<! ch)]
@@ -396,45 +394,49 @@
                         (recur (<! ch)))))
 
           :reagent-render 
-          (fn [& {:keys [id mode stroke-size color  ws-url] :as args}]
-            [:div 
-              [Button {:onClick handle-clear} "Clear"]
-              [FormControl
-               [InputLabel {:id "select-pen"} "Pen"]
-               [Select {:labelId "select-pen"
-                        :id "select"
-                        :value mode
-                        :onChange handle-change-pen
-                        }
-                [MenuItem {:value :select} "Select"]
-                [MenuItem {:value :rectangle} "Rect"]
-                [MenuItem {:value :line} "Line"]
-                [MenuItem {:value :circle} "Circle"]
-                [MenuItem {:value :polyline} "Pen"]
-                ]]
-               
+          (fn 
+            []
+            ;[& {:keys [id mode stroke-size color  ws-url] :as args}]
+            (let [props (get-props)]
+              [:div 
+               [Button {:onClick handle-clear} "Clear"]
+               [Button {:onClick (fn [] (js/console.log "current props: " (get-props)))} "sth"]
+               [FormControl
+                [InputLabel {:id "select-pen"} "Pen"]
+                [Select {:labelId "select-pen"
+                         :id "select"
+                         :value (:mode props)
+                         :onChange handle-change-pen
+                         }
+                 [MenuItem {:value :select} "Select"]
+                 [MenuItem {:value :rectangle} "Rect"]
+                 [MenuItem {:value :line} "Line"]
+                 [MenuItem {:value :circle} "Circle"]
+                 [MenuItem {:value :polyline} "Pen"]
+                 ]]
 
-              [FormControl
-               [InputLabel {:id "select-color"} "color"]
-               [Select {:labelId "select-color"
-                        :id "select"
-                        :value mode
-                        :onChange handle-change-color
-                        }
-                [MenuItem {:value "black"} "Black"]
-                [MenuItem {:value "red"} "Red"]
-                [MenuItem {:value "blue"} "Blue"]
-                ]]
-               
-              [Slider {:aria-label "Stroke size" 
-                      :min 1
-                      :max 20
-                      :value stroke-size
-                      :onChange handle-change-stroke-size}]
-              [:canvas
-              {:class "mt-24 ml-24 border-2 border-black w-screen h-screen"
-                :id id
-                :ref (fn [el] (reset! this el))
-                }]]
+
+               [FormControl
+                [InputLabel {:id "select-color"} "color"]
+                [Select {:labelId "select-color"
+                         :id "select"
+                         :value (:mode props)
+                         :onChange handle-change-color
+                         }
+                 [MenuItem {:value "black"} "Black"]
+                 [MenuItem {:value "red"} "Red"]
+                 [MenuItem {:value "blue"} "Blue"]
+                 ]]
+
+               [Slider {:aria-label "Stroke size" 
+                        :min 1
+                        :max 20
+                        :value (:stroke-size props)
+                        :onChange handle-change-stroke-size}]
+               [:canvas
+                {:class "mt-24 ml-24 border-2 border-black w-screen h-screen"
+                 :id (:id props)
+                 :ref (fn [el] (reset! this el))
+                 }]])
             )}
           )))

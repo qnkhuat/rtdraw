@@ -1,7 +1,6 @@
 (ns rtdraw.cljs.components.toolbar
   (:require
     [reagent.core :as r]
-    [rtdraw.cljs.components.canvas :refer [Canvas]]
     [rtdraw.cljs.components.mui :refer [Button FormControl MenuItem Select InputLabel Slider]]
     ))
   
@@ -27,8 +26,6 @@
          [MenuItem {:value :line} "Line"]
          [MenuItem {:value :circle} "Circle"]
          [MenuItem {:value :polyline} "Pen"]
-         ]
-        ]
+         ]]
 
        ])))
-    

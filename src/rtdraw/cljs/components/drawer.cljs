@@ -30,10 +30,11 @@
                     (js/console.log "state: " (clj->js @state))
                     (swap! state assoc k v))]
        [Canvas 
-        :mode (:mode @state)
-        :stroke-size (:stroke-size @state)
-        :color (:color @state)
-        :id "canvas"
-        :ws-url ws-url]
+        {
+         :mode (:mode @state)
+         :stroke-size (:stroke-size @state)
+         :color (:color @state)
+         :id "canvas"
+         :ws-url ws-url}]
        ])))
 
